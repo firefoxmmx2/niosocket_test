@@ -1,4 +1,4 @@
-package test;
+package test.nio;
 
 import java.io.FileInputStream;
 import java.io.IOException;
