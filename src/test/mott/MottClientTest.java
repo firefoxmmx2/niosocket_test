@@ -31,7 +31,7 @@ public class MottClientTest {
             mqttClient.registerSimpleHandler(simpleCallbackHandler);
             mqttClient.connect(CLIENT_ID + i, CLEAN_STRING, KEEP_ALIVE);
             mqttClient.subscribe(TOPICS, QOS_VALUES);
-            mqttClient.publish(PUBLISH_TOPICS, "keepalive".getBytes(), QOS_VALUES[0], true);
+//            mqttClient.publish(PUBLISH_TOPICS, "keepalive".getBytes(), QOS_VALUES[0], true);
         } catch (MqttException e) {
             e.printStackTrace();
         }
@@ -53,20 +53,50 @@ public class MottClientTest {
         }
     }
 
-    class AdvancedCallbackHandler implements MqttSimpleCallback {
-        @Override
-        public void connectionLost() throws Exception {
-
+    public static void main(String[] args) {
+        for (int i = 0; i < 1000; i++) {
+            new MottClientTest(String.valueOf(i));
         }
 
-        @Override
-        public void publishArrived(String s, byte[] bytes, int i, boolean b) throws Exception {
+        MqttAdminClientTest adminClient=new MqttAdminClientTest();
+        adminClient.publish("大家好");
+        adminClient.publish("我是楼主");
+        adminClient.publish("测试一下这个东西到底有没有毛病");
+        adminClient.publish("看来还不错,不知道能不能自动关闭连接");
+    }
+}
 
+
+class MqttAdminClientTest{
+    private final static String CONNECTION_URL = "tcp://localhost:1883";
+    private final static boolean CLEAN_STRING = true;
+    private final static short KEEP_ALIVE = 30;
+    private final static String CLIENT_ID = "admin";
+    private final static String[] TOPICS = {
+            "Test/Test Topics/Topic1",
+            "Test/Test Topics/Topic2",
+            "Test/Test Topics/Topic3",
+            "tokudu/client1"
+    };
+    private final static int[] QOS_VALUES = {0, 0, 2, 0};
+
+    private MqttClient mqttClient = null;
+    private final static String PUBLISH_TOPICS=TOPICS[0];
+
+    MqttAdminClientTest() {
+        try {
+            mqttClient=new MqttClient(CONNECTION_URL);
+            mqttClient.connect(CLIENT_ID,CLEAN_STRING,KEEP_ALIVE);
+        } catch (MqttException e) {
+            e.printStackTrace();
         }
     }
 
-
-    public static void main(String[] args) {
-         new MottClientTest(""+1);
+    public void publish(String msg) {
+        try {
+            mqttClient.publish(PUBLISH_TOPICS,msg.getBytes(),QOS_VALUES[0],true);
+        } catch (MqttException e) {
+            e.printStackTrace();
+        }
     }
 }
