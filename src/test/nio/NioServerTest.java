@@ -34,7 +34,7 @@ public class NioServerTest {
 class NioServer {
     static int BLOCK=4096;
     protected Selector selector;
-    protected String filename="/home/hooxin/研发管理制度.rar";
+    protected String filename="/home/hooxin/bookmarks.html";
     protected ByteBuffer clientBuffer=ByteBuffer.allocate(BLOCK);
     protected CharsetDecoder decoder;
     //处理客户端交互
