@@ -17,7 +17,7 @@ import java.util.concurrent.Executors;
  * Created by hooxin on 14-6-11.
  */
 public class NioClientTest {
-    static int SIZE=100;
+    static int SIZE=1;
     public static void main(String[] args) throws IOException, InterruptedException {
         ExecutorService exec= Executors.newFixedThreadPool(SIZE);
         for(int index=0;index<SIZE;index++){
