@@ -28,7 +28,7 @@ class NioMTBreakPointDowndloadServer {
     private ServerSocketChannel serverSocketChannel;
     private Selector selector;
     private ByteBuffer buffer;
-    private File downloadFile = new File("/home/hooxin/Downloads/scala-intellij-bin-0.33.421.zip");
+    private File downloadFile = new File("/home/hooxin/Downloads/第二讲：ExtJS.4中的新功能-定时事件与健盘导航.zip");
     private CharsetDecoder decoder;
     private CharsetEncoder encoder;
 
@@ -73,19 +73,43 @@ class NioMTBreakPointDowndloadServer {
                         SocketChannel channel = (SocketChannel) key.channel();
                         buffer.clear();
                         int count = channel.read(buffer);
-                        System.out.println("====");
                         channel.register(selector,SelectionKey.OP_WRITE);
                         if (count > 0) {
                             buffer.flip();
                             String msg = decoder.decode(buffer).toString();
-                            System.out.println("===================msg=" + msg + "===================");
-
+                            System.out.println("===================" + msg + "===================");
+                            if(msg.contains("continue")){
+                                boolean isContinue=false;
+                                int downloadLength=0;
+                                for (String s : msg.split(";")) {
+                                    String[] vs=s.split("=");
+                                    if("continue".equals(vs[0])&&"true".equals(vs[1])){
+                                        isContinue=true;
+                                    } else if ("downloaded".equals(vs[0])) {
+                                        downloadLength=Integer.parseInt(vs[1]);
+                                    }
+                                }
+                                key.attach(new DownloadHandler(isContinue,downloadLength,channel));
+                            }
+                            else {
+                                key.attach("continue=true");
+                            }
                         } else
                             channel.close();
                     } else if (key.isWritable()) {
                         SocketChannel channel = (SocketChannel) key.channel();
-                        channel.write(encoder.encode(CharBuffer.wrap("hello world")));
-                        channel.register(selector,SelectionKey.OP_READ);
+                        Object handler= key.attachment();
+                        if (handler instanceof String){
+                            if("continue=true".equals(handler)){
+                                channel.write(encoder.encode(CharBuffer.wrap("continue=true")));
+                                channel.register(selector,SelectionKey.OP_READ);
+                            }
+
+                        } else if (handler instanceof DownloadHandler) {
+                            DownloadHandler downloadHandler=(DownloadHandler) handler;
+                            downloadHandler.download(downloadFile);
+                            downloadHandler.close();
+                        }
                     }
                 }
             }
@@ -101,5 +125,44 @@ class NioMTBreakPointDowndloadServer {
 
         }
     }
+
+    class DownloadHandler {
+        private boolean isContinue=false;
+        private int downloadLength=0;
+        private SocketChannel channel;
+        private final int BLOCK_LEN = 4 * 1024;
+        private ByteBuffer buffer=ByteBuffer.allocate(BLOCK_LEN);
+
+        DownloadHandler(boolean isContinue, int downloadLength, SocketChannel channel) {
+            this.isContinue = isContinue;
+            this.downloadLength = downloadLength;
+            this.channel = channel;
+        }
+
+        DownloadHandler() {
+        }
+
+        public void download(File file) throws IOException {
+            RandomAccessFile f=new RandomAccessFile(file,"r");
+            f.seek(downloadLength);
+            FileChannel fc=f.getChannel();
+            int writedLen=0;
+            int i=0;
+            while((i=fc.read(buffer))>0){
+                buffer.flip();
+                channel.write(buffer);
+                buffer.clear();
+                writedLen+=i;
+            }
+            System.out.println("======== Writed: " + writedLen / 1024 / 1024.0 + " Mbytes. ========");
+            fc.close();
+        }
+
+        public void close() throws IOException {
+            channel.close();
+        }
+    }
+
+
 }
 

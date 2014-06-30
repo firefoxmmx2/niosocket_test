@@ -8,6 +8,7 @@ import java.nio.CharBuffer;
 import java.nio.channels.*;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
 import java.util.Iterator;
 
 /**
@@ -32,11 +33,12 @@ public class NioServerTest {
 
 
 class NioServer {
-    static int BLOCK=4096;
+    static int BLOCK=8*1024;
     protected Selector selector;
-    protected String filename="/home/hooxin/bookmarks.html";
+    protected String filename="/home/hooxin/dead.letter";
     protected ByteBuffer clientBuffer=ByteBuffer.allocate(BLOCK);
     protected CharsetDecoder decoder;
+    CharsetEncoder encoder=Charset.forName("utf8").newEncoder();
     //处理客户端交互
     public class HandleClient {
         protected FileChannel channel;
@@ -115,9 +117,16 @@ class NioServer {
             if(count>0){
                 clientBuffer.flip();
                 CharBuffer charBuffer=decoder.decode(clientBuffer);
-                System.out.println("==========Client >> "+charBuffer.toString()+"==============");
-                SelectionKey wKey=channel.register(selector,SelectionKey.OP_WRITE);
-                wKey.attach(new HandleClient());
+                if("incomplete".equals(charBuffer.toString())){
+                    SelectionKey wKey=channel.register(selector,SelectionKey.OP_WRITE);
+                    wKey.attach(new CompleteHandler());
+                }
+                else{
+                    System.out.println("==========Client >> "+charBuffer.toString()+"==============");
+                    SelectionKey wKey=channel.register(selector,SelectionKey.OP_WRITE);
+                    wKey.attach(new HandleClient());
+                }
+
             }
             else {
                 channel.close();
@@ -126,14 +135,34 @@ class NioServer {
         }
         else if(key.isWritable()) {
             SocketChannel channel= (SocketChannel) key.channel();
-            HandleClient handle= (HandleClient) key.attachment();
-            ByteBuffer block=handle.readBlock();
-            if(block!=null)
-                channel.write(block);
-            else{
-                handle.close();
-                channel.close();
+            Object obj = key.attachment();
+            if (obj instanceof HandleClient) {
+                HandleClient handle = (HandleClient) obj;
+                ByteBuffer block=handle.readBlock();
+                if(block!=null)
+                    channel.write(block);
+                else{
+                    handle.close();
+                    channel.register(selector,SelectionKey.OP_READ);
+                }
+            } else if (obj instanceof CompleteHandler) {
+                CompleteHandler handler= (CompleteHandler) obj;
+                handler.setChannel(channel);
+                handler.complete();
             }
+
+        }
+    }
+
+    class CompleteHandler {
+        private SocketChannel channel;
+
+        public void setChannel(SocketChannel channel) {
+            this.channel = channel;
+        }
+
+        public void complete() throws IOException {
+            channel.close();
         }
     }
 

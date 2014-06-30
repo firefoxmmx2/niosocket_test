@@ -1,13 +1,17 @@
 package test.nio;
 
+import java.awt.*;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
@@ -23,7 +27,7 @@ public class NioClientTest {
         for(int index=0;index<SIZE;index++){
             exec.execute(new NioClient.Download(index));
         }
-        Thread.sleep(10000);
+//        Thread.sleep(10000);
         exec.shutdown();
     }
 }
@@ -33,6 +37,7 @@ class NioClient{
     static int PORT=12345;
     static InetSocketAddress ip=new InetSocketAddress("localhost",PORT);
     static CharsetEncoder encoder= Charset.forName("utf8").newEncoder();
+    static CharsetDecoder decoder= Charset.forName("utf8").newDecoder();
     static class Download implements Runnable{
         protected int index;
 
@@ -50,7 +55,7 @@ class NioClient{
                 client.register(selector, SelectionKey.OP_CONNECT);
                 client.connect(ip);
                 ByteBuffer buffer=ByteBuffer.allocate(8*1024);
-                int total=0;
+                long total=0;
                 FOR: for(;;){
                     selector.select();
                     Iterator<SelectionKey> iter=selector.selectedKeys().iterator();
@@ -66,24 +71,52 @@ class NioClient{
                         }
                         else if(key.isReadable()){
                             SocketChannel channel= (SocketChannel) key.channel();
+                            buffer.clear();
                             int count=channel.read(buffer);
                             if(count>0){
-                                total+=count;
+                                RandomAccessFile f=new RandomAccessFile("/home/hooxin/testbookmarks.txt","rw");
+                                f.seek(total);
+                                buffer.flip();
+                                f.write(buffer.array());
                                 buffer.clear();
+                                total+=count;
+                                FileChannel fc=f.getChannel();
+                                while((count=channel.read(buffer))>0){
+                                    buffer.flip();
+                                    fc.write(buffer);
+                                    buffer.clear();
+                                    total+=count;
+                                }
+                                fc.close();
+                                SelectionKey wKey= channel.register(selector,SelectionKey.OP_WRITE);
+                                wKey.attach(new InComplete());
                             }
                             else{
                                 client.close();
                                 break FOR;
+                            }
+                        } else if (key.isWritable()) {
+                            SocketChannel channel= (SocketChannel) key.channel();
+                            Object obj=key.attachment();
+                            if (obj instanceof InComplete) {
+                                InComplete inComplete = (InComplete) obj;
+                                channel.write(encoder.encode(CharBuffer.wrap("incomplete")));
+                                SelectionKey wKey=channel.register(selector,SelectionKey.OP_READ);
+                                wKey.attach(new InComplete());
                             }
                         }
                     }
                 }
 
                 double last=(System.currentTimeMillis()-start) * 1.0 / 1000;
-                System.out.println("======Thread "+index+" download "+total+" bytes in "+last+" s.");
+                System.out.println("======Thread "+index+" download "+total/1024/1024.0+" Mbytes in "+last+" s.");
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
+    }
+
+    static class InComplete {
+
     }
 }
