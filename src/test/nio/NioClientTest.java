@@ -75,12 +75,12 @@ class NioClient{
                             int count=channel.read(buffer);
                             if(count>0){
                                 RandomAccessFile f=new RandomAccessFile("/home/hooxin/testbookmarks.txt","rw");
-                                f.seek(total);
+                                FileChannel fc=f.getChannel();
+                                fc.position(total);
                                 buffer.flip();
-                                f.write(buffer.array());
+                                fc.write(buffer);
                                 buffer.clear();
                                 total+=count;
-                                FileChannel fc=f.getChannel();
                                 while((count=channel.read(buffer))>0){
                                     buffer.flip();
                                     fc.write(buffer);
