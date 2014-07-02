@@ -1,13 +1,12 @@
 package test.nio;
 
+import com.sun.xml.internal.bind.v2.util.ByteArrayOutputStreamEx;
+
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
@@ -34,8 +33,9 @@ class NioMTBreakPointDownloadClient {
     private int downloadLength = 0;
     private String downloadConfigPath = "/tmp/downloadConfig";
     private String downloadOptionStr = "filename=scalaidea";
-    private ByteBuffer buffer = ByteBuffer.allocate(1024);
+    private ByteBuffer buffer = ByteBuffer.allocate(1024 * 4);
     private boolean needConfig = true;
+    private ByteArrayOutputStream bos;
 
     public NioMTBreakPointDownloadClient() {
         try {
@@ -64,6 +64,7 @@ class NioMTBreakPointDownloadClient {
             channel.connect(new InetSocketAddress(ADDRESS, PORT));
 
             encoder = Charset.forName("utf8").newEncoder();
+            bos=new ByteArrayOutputStream();
         } catch (IOException e) {
             e.printStackTrace();
             try {
@@ -78,7 +79,9 @@ class NioMTBreakPointDownloadClient {
 
     public void listen() {
         try {
-            while (selector.select() > 0) {
+            FOR:
+            for (; ; ) {
+                selector.select();
                 Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
                 while (keys.hasNext()) {
                     SelectionKey key = keys.next();
@@ -88,57 +91,105 @@ class NioMTBreakPointDownloadClient {
                         if (channel.isConnectionPending()) {
                             channel.finishConnect();
                         }
-                        channel.write(encoder.encode(CharBuffer.wrap("does support break point?")));
+                        NioMessage message = new NioMessage(false, null, "breakpoint?");
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        ObjectOutputStream oos = new ObjectOutputStream(bos);
+                        oos.writeObject(message);
+                        byte[] data = bos.toByteArray();
+                        bos.close();
+                        oos.close();
+                        channel.write(ByteBuffer.wrap(data));
                         channel.register(selector, SelectionKey.OP_READ);
                     } else if (key.isReadable()) {
                         SocketChannel channel = (SocketChannel) key.channel();
                         buffer.clear();
                         int i = 0;
-                        if ((i = channel.read(buffer)) > 0) {
+                        while ((i = channel.read(buffer)) > 0) {
                             buffer.flip();
-                            try {
-                                String result= decoder.decode(buffer).toString();
-                                System.out.println("====" + result + "====");
-                                if("complete=true".equals(result)){
-                                    needConfig=false;
-                                    break;
-                                }
-                                else if ("continue=true".equals(result)) {
-                                    downloadOptionStr += ";" + result;
-                                }
+                            bos.write(buffer.array());
+                            ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bos.toByteArray()));
+                            NioMessage message=null;
+                            try{
+                                message = (NioMessage) ois.readObject();
+                                bos.reset();
+                            }catch (IOException e){
 
-                                channel.register(selector, SelectionKey.OP_WRITE);
-                            } catch (MalformedInputException e) {
-                                RandomAccessFile f = new RandomAccessFile("/home/hooxin/temp.zip", "rw");
-                                f.seek(downloadLength);
-                                f.write(buffer.array());
-                                buffer.clear();
-                                downloadLength += i;
-                                FileChannel fc = f.getChannel();
-                                while ((i = channel.read(buffer)) > 0) {
-                                    buffer.flip();
-                                    fc.write(buffer);
+                            }
+                            buffer.clear();
+                            ois.close();
+                            if(message!=null){
+                                if (message.isData()) {
+                                    FileChannel fc = new RandomAccessFile("/home/hooxin/temp.zip", "rw").getChannel();
+                                    fc.position(downloadLength);
+                                    fc.write(ByteBuffer.wrap(message.getData()));
                                     buffer.clear();
                                     downloadLength += i;
+                                    fc.close();
+                                } else {
+                                    String result = message.getMsg();
+                                    System.out.println("====" + result + "====");
+                                    if ("complete=true".equals(result)) {
+                                        needConfig = false;
+                                        channel.close();
+                                        break FOR;
+                                    } else if ("continue=true".equals(result)) {
+                                        downloadOptionStr += ";" + result;
+                                    }
+
+                                    SelectionKey wKey = channel.register(selector, SelectionKey.OP_WRITE);
+                                    wKey.attach("continue=true");
                                 }
-                                fc.close();
                             }
 
                         }
+//                        if( i <= 0)
+//                        {
+//                            needConfig=false;
+//                            channel.close();
+//                            break FOR;
+//                        }
 
                     } else if (key.isWritable()) {
                         SocketChannel channel = (SocketChannel) key.channel();
-                        channel.write(encoder.encode(CharBuffer.wrap(downloadOptionStr)));
-                        channel.register(selector, SelectionKey.OP_READ);
+                        Object obj = key.attachment();
+                        if (obj instanceof String) {
+                            String s = (String) obj;
+                            if ("continue=true".equals(s)) {
+                                NioMessage message = new NioMessage(false, null, downloadOptionStr);
+                                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                                ObjectOutputStream oos = new ObjectOutputStream(bos);
+                                oos.writeObject(message);
+                                byte[] data = bos.toByteArray();
+                                bos.close();
+                                oos.close();
+                                channel.write(ByteBuffer.wrap(data));
+                                channel.register(selector, SelectionKey.OP_READ);
+                            }
+//                            else if ("complete=true".equals(s)) {
+//                                NioMessage message=new NioMessage(false,null,"complete=true");
+//                                ByteArrayOutputStream bos=new ByteArrayOutputStream();
+//                                ObjectOutputStream oos=new ObjectOutputStream(bos);
+//                                oos.writeObject(message);
+//                                byte[] data=bos.toByteArray();
+//                                bos.close();
+//                                oos.close();
+//
+//                                channel.write(ByteBuffer.wrap(data));
+//                                channel.register(selector,SelectionKey.OP_READ);
+//                            }
+                        }
                     }
                 }
             }
         } catch (IOException e) {
             e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
         } finally {
             try {
                 selector.close();
                 channel.close();
+                bos.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -147,7 +198,7 @@ class NioMTBreakPointDownloadClient {
                 File downloadConfigFile = new File(downloadConfigPath);
                 try {
                     BufferedWriter bw = new BufferedWriter(new FileWriter(downloadConfigFile));
-                    downloadOptionStr+=";downloaded="+downloadLength;
+                    downloadOptionStr += ";downloaded=" + downloadLength;
                     String[] lines = downloadOptionStr.split(";");
                     for (String line : lines) {
                         bw.write(line);
@@ -157,11 +208,46 @@ class NioMTBreakPointDownloadClient {
                 } catch (IOException e1) {
                     e1.printStackTrace();
                 }
-            }
-            else{
-                File downloadConfigFile=new File(downloadConfigPath);
+            } else {
+                File downloadConfigFile = new File(downloadConfigPath);
                 downloadConfigFile.delete();
             }
         }
+    }
+}
+
+class NioMessage implements Serializable {
+    private boolean isData = false;
+    private byte[] data;
+    private String msg;
+
+    NioMessage(boolean isData, byte[] data, String msg) {
+        this.isData = isData;
+        this.data = data;
+        this.msg = msg;
+    }
+
+    public boolean isData() {
+        return isData;
+    }
+
+    public void setData(boolean isData) {
+        this.isData = isData;
+    }
+
+    public byte[] getData() {
+        return data;
+    }
+
+    public void setData(byte[] data) {
+        this.data = data;
+    }
+
+    public String getMsg() {
+        return msg;
+    }
+
+    public void setMsg(String msg) {
+        this.msg = msg;
     }
 }
