@@ -1,6 +1,6 @@
 package test.nio;
 
-import com.sun.xml.internal.bind.v2.util.ByteArrayOutputStreamEx;
+import com.sun.xml.internal.fastinfoset.util.CharArray;
 
 import java.io.*;
 import java.net.InetSocketAddress;
@@ -10,8 +10,6 @@ import java.nio.channels.*;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
-import java.nio.charset.MalformedInputException;
-import java.util.Iterator;
 
 /**
  * Created by hooxin on 14-6-26.
@@ -26,50 +24,32 @@ public class NioBreakPointSingle {
 class NioMTBreakPointDownloadClient {
     private final int PORT = 10088;
     private final String ADDRESS = "127.0.0.1";
-    private SocketChannel channel;
+    private SocketChannel client;
     private Selector selector;
     private CharsetEncoder encoder;
     private CharsetDecoder decoder;
     private int downloadLength = 0;
-    private String downloadConfigPath = "/tmp/downloadConfig";
-    private String downloadOptionStr = "filename=scalaidea";
-    private ByteBuffer buffer = ByteBuffer.allocate(1024 * 4);
-    private boolean needConfig = true;
     private ByteArrayOutputStream bos;
+    private String savePath="/home/hooxin/temp.zip";
 
     public NioMTBreakPointDownloadClient() {
         try {
             decoder = Charset.forName("utf8").newDecoder();
 
-            File downloadConfigFile = new File(downloadConfigPath);
-            if (downloadConfigFile.isFile()) {
-                BufferedReader br = new BufferedReader(new FileReader(downloadConfigFile));
-                String line = null;
-                while ((line = br.readLine()) != null) {
-                    String[] vs = line.split("=");
-                    if ("downloaded".equals(vs[0])) {
-                        downloadLength = Integer.parseInt(vs[1]);
-                    }
-                    downloadOptionStr += line + ";";
-                }
-                downloadOptionStr = downloadOptionStr.substring(0, downloadOptionStr.length() - 1);
-                br.close();
-
-            }
-            channel = SocketChannel.open();
+            client = SocketChannel.open();
             selector = Selector.open();
 
-            channel.configureBlocking(false);
-            channel.register(selector, SelectionKey.OP_CONNECT);
-            channel.connect(new InetSocketAddress(ADDRESS, PORT));
+            client.configureBlocking(false);
+            client.register(selector, SelectionKey.OP_CONNECT);
+            client.connect(new InetSocketAddress(ADDRESS, PORT));
 
             encoder = Charset.forName("utf8").newEncoder();
-            bos=new ByteArrayOutputStream();
+            bos = new ByteArrayOutputStream();
         } catch (IOException e) {
             e.printStackTrace();
             try {
                 selector.close();
-                channel.close();
+                client.close();
             } catch (IOException e1) {
                 e1.printStackTrace();
             }
@@ -78,161 +58,128 @@ class NioMTBreakPointDownloadClient {
     }
 
     public void listen() {
-        try {
-            FOR:
-            for (; ; ) {
-                selector.select();
-                Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
-                while (keys.hasNext()) {
-                    SelectionKey key = keys.next();
-                    keys.remove();
-                    if (key.isConnectable()) {
-                        SocketChannel channel = (SocketChannel) key.channel();
-                        if (channel.isConnectionPending()) {
-                            channel.finishConnect();
-                        }
-                        NioMessage message = new NioMessage(false, null, "breakpoint?");
-                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                        ObjectOutputStream oos = new ObjectOutputStream(bos);
-                        oos.writeObject(message);
-                        byte[] data = bos.toByteArray();
-                        bos.close();
-                        oos.close();
-                        channel.write(ByteBuffer.wrap(data));
-                        channel.register(selector, SelectionKey.OP_READ);
-                    } else if (key.isReadable()) {
-                        SocketChannel channel = (SocketChannel) key.channel();
-                        buffer.clear();
-                        int i = 0;
-                        while ((i = channel.read(buffer)) > 0) {
-                            buffer.flip();
-                            bos.write(buffer.array());
-                            ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bos.toByteArray()));
-                            NioMessage message=null;
-                            try{
-                                message = (NioMessage) ois.readObject();
-                                bos.reset();
-                            }catch (IOException e){
-
-                            }
-                            buffer.clear();
-                            ois.close();
-                            if(message!=null){
-                                if (message.isData()) {
-                                    FileChannel fc = new RandomAccessFile("/home/hooxin/temp.zip", "rw").getChannel();
-                                    fc.position(downloadLength);
-                                    fc.write(ByteBuffer.wrap(message.getData()));
-                                    buffer.clear();
-                                    downloadLength += i;
-                                    fc.close();
-                                } else {
-                                    String result = message.getMsg();
-                                    System.out.println("====" + result + "====");
-                                    if ("complete=true".equals(result)) {
-                                        needConfig = false;
-                                        channel.close();
-                                        break FOR;
-                                    } else if ("continue=true".equals(result)) {
-                                        downloadOptionStr += ";" + result;
-                                    }
-
-                                    SelectionKey wKey = channel.register(selector, SelectionKey.OP_WRITE);
-                                    wKey.attach("continue=true");
-                                }
-                            }
-
-                        }
-//                        if( i <= 0)
-//                        {
-//                            needConfig=false;
-//                            channel.close();
-//                            break FOR;
-//                        }
-
-                    } else if (key.isWritable()) {
-                        SocketChannel channel = (SocketChannel) key.channel();
-                        Object obj = key.attachment();
-                        if (obj instanceof String) {
-                            String s = (String) obj;
-                            if ("continue=true".equals(s)) {
-                                NioMessage message = new NioMessage(false, null, downloadOptionStr);
-                                ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                                ObjectOutputStream oos = new ObjectOutputStream(bos);
-                                oos.writeObject(message);
-                                byte[] data = bos.toByteArray();
-                                bos.close();
-                                oos.close();
-                                channel.write(ByteBuffer.wrap(data));
-                                channel.register(selector, SelectionKey.OP_READ);
-                            }
-//                            else if ("complete=true".equals(s)) {
-//                                NioMessage message=new NioMessage(false,null,"complete=true");
-//                                ByteArrayOutputStream bos=new ByteArrayOutputStream();
-//                                ObjectOutputStream oos=new ObjectOutputStream(bos);
-//                                oos.writeObject(message);
-//                                byte[] data=bos.toByteArray();
-//                                bos.close();
-//                                oos.close();
-//
-//                                channel.write(ByteBuffer.wrap(data));
-//                                channel.register(selector,SelectionKey.OP_READ);
-//                            }
-                        }
-                    }
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        } finally {
+        FOR:
+        for (; ; ) {
             try {
-                selector.close();
-                channel.close();
-                bos.close();
+                selector.select();
             } catch (IOException e) {
                 e.printStackTrace();
             }
-
-            if (needConfig) {
-                File downloadConfigFile = new File(downloadConfigPath);
-                try {
-                    BufferedWriter bw = new BufferedWriter(new FileWriter(downloadConfigFile));
-                    downloadOptionStr += ";downloaded=" + downloadLength;
-                    String[] lines = downloadOptionStr.split(";");
-                    for (String line : lines) {
-                        bw.write(line);
-                        bw.newLine();
-                    }
-                    bw.close();
-                } catch (IOException e1) {
-                    e1.printStackTrace();
+            for (SelectionKey key : selector.selectedKeys()) {
+                if(!handlerKey(key)){
+                    break FOR;
                 }
-            } else {
-                File downloadConfigFile = new File(downloadConfigPath);
-                downloadConfigFile.delete();
             }
+            selector.selectedKeys().clear();
         }
+    }
+
+    private boolean handlerKey(SelectionKey key)  {
+        try{
+            if (key.isConnectable()) {
+                SocketChannel channel = (SocketChannel) key.channel();
+                if (channel.isConnectionPending())
+                    channel.finishConnect();
+                NioMessage message = new NioMessage("download=true;filename=scala-intellij-bin-0.33.421.zip");
+                message.writeMessage(channel);
+                key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+            } else if (key.isReadable()) {
+                SocketChannel channel = (SocketChannel) key.channel();
+                ByteBuffer buffer = ByteBuffer.allocate(1024 * 8);
+                buffer.clear();
+                if (channel.read(buffer) > 0) {
+                    NioMessage message=null;
+                    bos.write(buffer.array());
+                    try {
+                        message = NioMessage.readToMessage(bos.toByteArray());
+                        bos.reset();
+                    } catch (ClassNotFoundException e) {
+                        e.printStackTrace();
+                    } catch (IOException e) {
+
+                    }
+                    if(message!=null){
+                        if(message.isHasData()){
+                            FileChannel fc=new FileOutputStream(savePath).getChannel();
+                            fc.position(downloadLength);
+                            fc.write(ByteBuffer.wrap(message.getData()));
+                            fc.force(true);
+                            fc.close();
+                            downloadLength += message.getData().length;
+                            if("complete".equals(message.getMsg())){
+                                channel.register(selector,SelectionKey.OP_WRITE);
+                                key.attach("complete");
+                            }
+                        }
+                        else{
+                            if("complete".equals(message.getMsg())){
+                                channel.register(selector,SelectionKey.OP_WRITE);
+                                key.attach("complete");
+                            }
+                        }
+                    }
+                }
+                else{
+                    channel.close();
+                    client.close();
+                    return false;
+                }
+
+            } else if (key.isWritable()) {
+                SocketChannel channel= (SocketChannel) key.channel();
+                Object obj=key.attachment();
+                if (obj instanceof String) {
+                    String s = (String) obj;
+                    if("complete".equals(s)){
+                        NioMessage message=new NioMessage();
+                        message.setMsg("complete");
+                        message.writeMessage(channel);
+                        channel.register(selector,SelectionKey.OP_READ);
+                    }
+                }
+
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+       return true;
     }
 }
 
 class NioMessage implements Serializable {
-    private boolean isData = false;
-    private byte[] data;
     private String msg;
+    private boolean hasData = false;
+    private byte[] data;
 
-    NioMessage(boolean isData, byte[] data, String msg) {
-        this.isData = isData;
+    NioMessage(String msg, boolean hasData, byte[] data) {
+        this.msg = msg;
+        this.hasData = hasData;
         this.data = data;
+    }
+
+    NioMessage() {
+    }
+
+    NioMessage(String msg) {
         this.msg = msg;
     }
 
-    public boolean isData() {
-        return isData;
+    public String getMsg() {
+        return msg;
     }
 
-    public void setData(boolean isData) {
-        this.isData = isData;
+    public void setMsg(String msg) {
+        this.msg = msg;
+    }
+
+    public boolean isHasData() {
+        return hasData;
+    }
+
+    public void setHasData(boolean hasData) {
+        this.hasData = hasData;
     }
 
     public byte[] getData() {
@@ -243,11 +190,16 @@ class NioMessage implements Serializable {
         this.data = data;
     }
 
-    public String getMsg() {
-        return msg;
+    public static NioMessage readToMessage(byte[] data) throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(data));
+        NioMessage message = (NioMessage) ois.readObject();
+        ois.close();
+        return message;
     }
 
-    public void setMsg(String msg) {
-        this.msg = msg;
+    public void writeMessage(SocketChannel channel) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(channel.socket().getOutputStream());
+        oos.writeObject(this);
+        oos.close();
     }
 }
