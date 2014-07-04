@@ -82,7 +82,7 @@ class NioMTBreakPointDownloadClient {
                     channel.finishConnect();
                 NioMessage message = new NioMessage("download=true;filename=scala-intellij-bin-0.33.421.zip");
                 message.writeMessage(channel);
-                key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+                channel.register(selector,SelectionKey.OP_READ);
             } else if (key.isReadable()) {
                 SocketChannel channel = (SocketChannel) key.channel();
                 ByteBuffer buffer = ByteBuffer.allocate(1024 * 8);
@@ -198,8 +198,11 @@ class NioMessage implements Serializable {
     }
 
     public void writeMessage(SocketChannel channel) throws IOException {
-        ObjectOutputStream oos = new ObjectOutputStream(channel.socket().getOutputStream());
+        ByteArrayOutputStream bos=new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos);
         oos.writeObject(this);
+        channel.write(ByteBuffer.wrap(bos.toByteArray()));
+        bos.close();
         oos.close();
     }
 }
