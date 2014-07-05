@@ -86,11 +86,12 @@ class NioMTBreakPointDowndloadServer {
             SocketChannel channel = server.accept();
             channel.configureBlocking(false);
             SelectionKey mKey = channel.register(selector, SelectionKey.OP_READ);
-            mKey.attach(new ReadHandler());
+            mKey.attach(new DownloadHandler());
         } else if (key.isReadable()) {
             SocketChannel channel = (SocketChannel) key.channel();
-            ReadHandler handler = (ReadHandler) key.attachment();
+            DownloadHandler handler = (DownloadHandler) key.attachment();
             NioMessage message = handler.readBlock(channel);
+            System.out.println("============= server read ============");
             if (message != null) {
                 if (StringUtils.isNotEmpty(message.getMsg())) {
                     boolean needDownload = false;
@@ -105,60 +106,76 @@ class NioMTBreakPointDowndloadServer {
 
                     if (needDownload) {
                         channel.register(selector, SelectionKey.OP_WRITE);
-                        key.attach(new DownloadHandler(new File(downloadDirPath + File.separator + filename)));
+//                        key.attach(new DownloadHandler(new File(downloadDirPath + File.separator + filename)));
+                        handler.setFile(new File(downloadDirPath + File.separator + filename));
+                        handler.command="download";
+                        key.attach(handler);
                     }
+                    if ("incomplete".equals(message.getMsg())){
+                        channel.register(selector, SelectionKey.OP_WRITE);
+                        handler.command="download";
+                        key.attach(handler);
+                    }
+                    if("complete".equals(message.getMsg())){
+                        channel.register(selector,SelectionKey.OP_WRITE);
+                        handler.command="complete";
+                        key.attach(handler);
+                    }
+
                 }
 
             }
         } else if (key.isWritable()) {
             SocketChannel channel = (SocketChannel) key.channel();
-            Object obj = key.attachment();
-            if (obj instanceof DownloadHandler) {
-                DownloadHandler downloadHandler = (DownloadHandler) obj;
-                if (downloadHandler.download(channel)) {
-                    downloadHandler.close();
-                    channel.register(selector, SelectionKey.OP_READ);
+            DownloadHandler handler= (DownloadHandler) key.attachment();
+            System.out.println("========= server write ========");
+            if(handler!=null){
+                if("download".equals(handler.command)){
+                    if(handler.download(channel)){
+                        handler.close();
+                        NioMessage message=new NioMessage("complete");
+                        message.writeMessage(channel);
+                        channel.close();
+                    }
+                    else
+                        channel.register(selector,SelectionKey.OP_READ);
+                } else if ("complete".equals(handler.command)) {
+                    NioMessage message=new NioMessage("complete");
+                    message.writeMessage(channel);
+                    channel.close();
                 }
 
+                key.attach(handler);
             }
-
         }
         return true;
     }
 
     class DownloadHandler {
-        ByteBuffer buffer = ByteBuffer.allocate(1024 * 8);
+        ByteBuffer buffer;
         FileChannel fc;
         File file;
+        String command = "";
+        ByteArrayOutputStream bos;
+
+        DownloadHandler() {
+            buffer = ByteBuffer.allocate(1024 * 8);
+            bos = new ByteArrayOutputStream();
+        }
+
 
         DownloadHandler(File file) throws FileNotFoundException {
+            this();
             fc = new FileInputStream(file).getChannel();
         }
 
-        public boolean download(SocketChannel channel) throws IOException, ClassNotFoundException {
-            int i = fc.read(buffer);
-            if (i > 0) {
-                NioMessage message = new NioMessage("incomplete", true, buffer.array());
-                message.writeMessage(channel);
-                return false;
-            } else {
-                return true;
-            }
-
+        public File getFile() {
+            return file;
         }
 
-        public void close() throws IOException {
-            fc.close();
-        }
-    }
-
-    class ReadHandler {
-        ByteBuffer buffer;
-        ByteArrayOutputStream bos;
-
-        ReadHandler() {
-            buffer = ByteBuffer.allocate(BLOCK_LEN);
-            bos = new ByteArrayOutputStream();
+        public void setFile(File file) throws FileNotFoundException {
+            this.file = file;
+            fc = new FileInputStream(file).getChannel();
         }
 
         public NioMessage readBlock(SocketChannel channel) throws IOException {
@@ -180,13 +197,29 @@ class NioMTBreakPointDowndloadServer {
             return message;
         }
 
-        public void close() {
-            try {
-                bos.close();
-            } catch (IOException e) {
-                e.printStackTrace();
+        public boolean download(SocketChannel channel) throws IOException, ClassNotFoundException {
+            if (fc == null)
+                throw new RuntimeException("download file is null");
+            buffer.clear();
+            int i = fc.read(buffer);
+            if (i > 0) {
+                buffer.flip();
+                NioMessage message = new NioMessage("incomplete", true, buffer.array());
+                message.writeMessage(channel);
+                return false;
+            } else {
+                NioMessage message=new NioMessage("complete");
+                message.writeMessage(channel);
+                return true;
             }
+
+        }
+
+        public void close() throws IOException {
+            fc.close();
+            bos.close();
         }
     }
+
 }
 
