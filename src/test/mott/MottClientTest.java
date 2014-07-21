@@ -1,9 +1,9 @@
 package test.mott;
 
-import com.ibm.mqtt.Mqtt;
-import com.ibm.mqtt.MqttClient;
-import com.ibm.mqtt.MqttException;
-import com.ibm.mqtt.MqttSimpleCallback;
+import com.ibm.mqtt.*;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by hooxin on 14-6-16.
@@ -53,9 +53,19 @@ public class MottClientTest {
         }
     }
 
+    public void close(){
+        try {
+            mqttClient.disconnect();
+            mqttClient.terminate();
+        } catch (MqttPersistenceException e) {
+            e.printStackTrace();
+        }
+    }
+
     public static void main(String[] args) {
+        List<MottClientTest> clients=new ArrayList<MottClientTest>();
         for (int i = 0; i < 1000; i++) {
-            new MottClientTest(String.valueOf(i));
+            clients.add(new MottClientTest(String.valueOf(i)));
         }
 
         MqttAdminClientTest adminClient=new MqttAdminClientTest();
@@ -63,6 +73,13 @@ public class MottClientTest {
         adminClient.publish("我是楼主");
         adminClient.publish("测试一下这个东西到底有没有毛病");
         adminClient.publish("看来还不错,不知道能不能自动关闭连接");
+        adminClient.publish("添加了close函数，看看可不可以断开连接");
+        adminClient.close();
+        adminClient.publish("这是在断开后发送的，还能看到吗?");
+
+        for (MottClientTest client : clients) {
+            client.close();
+        }
     }
 }
 
@@ -96,6 +113,15 @@ class MqttAdminClientTest{
         try {
             mqttClient.publish(PUBLISH_TOPICS,msg.getBytes(),QOS_VALUES[0],true);
         } catch (MqttException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void close() {
+        try {
+            mqttClient.disconnect();
+            mqttClient.terminate();
+        } catch (MqttPersistenceException e) {
             e.printStackTrace();
         }
     }
