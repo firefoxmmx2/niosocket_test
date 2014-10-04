@@ -95,41 +95,52 @@ class SockSServerThread extends Thread {
 //                        继续读取sock5请求
                         readbytes = in.read(buf, 0, BUFF_LEN);
                         if (readbytes > 0) {
-                            if (buf[0] == 5 && buf[1] == 1 && buf[2] == 0 && buf[3] == 1) {
+                            if (buf[0] == 0x5 && buf[1] == 0x1 && buf[2] == 0x0 && buf[3] == 0x1) {
 //                                从这个请求中获取连接的ip地址和端口,然后创建对应的tcp连接
                                 ip = bytes2int(buf[4]) + "." + bytes2int(buf[5]) + "." + bytes2int(buf[6]) + "." + bytes2int(buf[7]);
                                 port = buf[8] * 256 + buf[9];
-                                port = 80;
-                                client = new Socket(ip, port);
-                                in1 = new DataInputStream(client.getInputStream());
-                                out1 = new DataOutputStream(client.getOutputStream());
+
+//                                port = Integer.parseInt(bytes2int(buf[8])+""+bytes2int(buf[9]));
+//                                port = 80;
+
+                            } else {
+                                s = new String(buf);
+                                s = s.substring(5);
+                                int index = s.indexOf("\0");
+                                s = s.substring(0, index);
+                                port = buf[5 + index] * 256 + buf[5 + index + 1];
+                                ip=s;
+                            }
+
+                            client = new Socket(ip, port);
+                            in1 = new DataInputStream(client.getInputStream());
+                            out1 = new DataOutputStream(client.getOutputStream());
 //                                发送sock5响应
-                                ip1 = client.getLocalAddress().getAddress();
-                                port1 = client.getLocalPort();
-                                buf[1] = 0;
-                                buf[4] = ip1[0];
-                                buf[5] = ip1[1];
-                                buf[6] = ip1[2];
-                                buf[7] = ip1[3];
-                                buf[8] = (byte) (port1 >> 8);
-                                buf[9] = (byte) (port1 & 0xff);
-                                out.write(buf, 0, 10);
-                                out.flush();
+                            ip1 = client.getLocalAddress().getAddress();
+                            port1 = client.getLocalPort();
+                            buf[1] = 0;
+                            buf[4] = ip1[0];
+                            buf[5] = ip1[1];
+                            buf[6] = ip1[2];
+                            buf[7] = ip1[3];
+                            buf[8] = (byte) (port1 >> 8);
+                            buf[9] = (byte) (port1 & 0xff);
+                            out.write(buf, 0, 10);
+                            out.flush();
 //                                发送数据给客户端
-                                SOCKSServerThread1 thread1 = new SOCKSServerThread1(in1, out);
-                                while (true) {
-                                    try {
-                                        if (readbytes1 == -1)
-                                            break;
-                                        readbytes1 = in.read(buf1, 0, BUFF_LEN);
-                                        if (readbytes1 > 0) {
-                                            out1.write(buf1, 0, readbytes1);
-                                            out.flush();
-                                        }
-                                    } catch (IOException e) {
-                                        e.printStackTrace();
+                            SOCKSServerThread1 thread1 = new SOCKSServerThread1(in1, out,client);
+                            while (true) {
+                                try {
+                                    if (readbytes1 == -1)
                                         break;
+                                    readbytes1 = in.read(buf1, 0, BUFF_LEN);
+                                    if (readbytes1 > 0) {
+                                        out1.write(buf1, 0, readbytes1);
+                                        out.flush();
                                     }
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                    break;
                                 }
                             }
                         }
@@ -147,41 +158,41 @@ class SockSServerThread extends Thread {
                             ip = bytes2int(buf[4]) + "." + bytes2int(buf[5]) + "." + bytes2int(buf[6]) + "." + bytes2int(buf[7]);
                             s = ip;
                         }
-                    }
 
-                    for (i = 1; i <= 9; i++)
-                        buf[i - 1] = 0;
-                    client = new Socket(s, port);
+                        for (i = 1; i <= 9; i++)
+                            buf[i - 1] = 0;
+                        client = new Socket(s, port);
 //                    根据sock4 请求中的地址建立tcp套接字 也就是转发的套接字
-                    in1 = new DataInputStream(client.getInputStream());
-                    out1 = new DataOutputStream(client.getOutputStream());
+                        in1 = new DataInputStream(client.getInputStream());
+                        out1 = new DataOutputStream(client.getOutputStream());
 
 //                    返回sock4应答
-                    ip1 = client.getLocalAddress().getAddress();
-                    port1 = client.getLocalPort();
-                    buf[0] = 0;
-                    buf[1] = 0x5a;
-                    buf[2] = ip1[0];
-                    buf[3] = ip1[1];
-                    buf[4] = (byte) (port1 >> 8);    //把之前转化为int的byte数据转化回byte,在写入输出流
-                    buf[5] = (byte) (port1 & 0xff);
-                    out.write(buf, 0, 8);
-                    out.flush();
+                        ip1 = client.getLocalAddress().getAddress();
+                        port1 = client.getLocalPort();
+                        buf[0] = 0;
+                        buf[1] = 0x5a;
+                        buf[2] = ip1[0];
+                        buf[3] = ip1[1];
+                        buf[4] = (byte) (port1 >> 8);    //把之前转化为int的byte数据转化回byte,在写入输出流
+                        buf[5] = (byte) (port1 & 0xff);
+                        out.write(buf, 0, 8);
+                        out.flush();
 
-                    // todo SOCKSServerThread1
-                    SOCKSServerThread1 thread1 = new SOCKSServerThread1(in1, out);
-                    while (true) {
-                        if (readbytes1 == -1)
-                            break;
-                        try {
-                            readbytes1 = in.read(buf1, 0, BUFF_LEN);
-                            if (readbytes1 > 0) {
-                                out1.write(buf1, 0, readbytes1);
-                                out1.flush();
+                        // SOCKSServerThread1
+                        SOCKSServerThread1 thread1 = new SOCKSServerThread1(in1, out,client);
+                        while (true) {
+                            if (readbytes1 == -1)
+                                break;
+                            try {
+                                readbytes1 = in.read(buf1, 0, BUFF_LEN);
+                                if (readbytes1 > 0) {
+                                    out1.write(buf1, 0, readbytes1);
+                                    out1.flush();
+                                }
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                                break;
                             }
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            break;
                         }
                     }
                 }
@@ -192,7 +203,7 @@ class SockSServerThread extends Thread {
                 in1.close();
             if (out1 != null)
                 out1.close();
-            if (client != null)
+            if (client != null && !client.isClosed())
                 client.close();
             if (in != null)
                 in.close();
@@ -213,11 +224,11 @@ class SOCKSServerThread1 extends Thread {
     private DataInputStream in;
     private DataOutputStream out;
     private static int BUF_LEN = 10000;
-
-    public SOCKSServerThread1(DataInputStream in, DataOutputStream out) {
+    private Socket client;
+    public SOCKSServerThread1(DataInputStream in, DataOutputStream out,Socket client) {
         this.in = in;
         this.out = out;
-
+        this.client=client;
         start();
     }
 
@@ -242,10 +253,13 @@ class SOCKSServerThread1 extends Thread {
         }
 //        //关闭流
 //        try {
-//            if(in!=null)
+//            if (in != null )
 //                in.close();
-//            if(out!=null)
+//            if (out != null)
 //                out.close();
+//            if(client != null ){
+//                client.close();
+//            }
 //        } catch (IOException e) {
 //            e.printStackTrace();
 //        }
