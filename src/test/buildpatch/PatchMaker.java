@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
 
 /**
  * 一个简单的临时的补丁打包工具
@@ -29,7 +28,7 @@ public class PatchMaker {
     /**
      * 补丁输出文件夹
      */
-    public static final String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统v1.7";
+    public static final String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统接口部分";
     /**
      * 改动补丁文件夹列表(可以直接使用idea格式)
      */
@@ -58,8 +57,8 @@ public class PatchMaker {
                     toPaths.add(PATCH_OUT_DIR + "/" + "程序" + CLASSES_DIR + "/" + path);
 
                     if (path.contains(".class")) {   //支持内部类
-                        final File fromPathFile0 = new File(path);
-                        String[] subclasses = fromPathFile0.getParentFile().list(new FilenameFilter() {
+                        final File fromPathFile0 = new File(PROJECT_ARTIFACT_CLASSES_DIR + "/" + path);
+                        File[] subclassFiles = fromPathFile0.getParentFile().listFiles(new FilenameFilter() {
                             @Override
                             public boolean accept(File dir, String name) {
                                 if (name.contains(fromPathFile0.getName().split(".class")[0] + "$"))
@@ -68,19 +67,25 @@ public class PatchMaker {
                                     return false;
                             }
                         });
-                        for (int i = 0; i < subclasses.length; i++) {
-                            String subclass = subclasses[i];
-
-                        }
+                        if (subclassFiles != null)
+                            for (int i = 0; i < subclassFiles.length; i++) {
+                                String subclass = subclassFiles[i].getPath();
+                                fromPaths.add(subclass);
+                                toPaths.add(PATCH_OUT_DIR + "/" + "程序" + CLASSES_DIR + "/" + subclass.split(PROJECT_ARTIFACT_CLASSES_DIR + "/")[1]);
+                            }
                     }
 
                 } else if (filepath.contains("WebRoot/")) {
                     String path = filepath.substring(filepath.indexOf("WebRoot/") + "WebRoot/".length());
-                    fromPaths = PROJECT_ARTIFACT_DIR + "/" + path;
-                    toPaths = PATCH_OUT_DIR + "/" + "程序" + "/" + path;
+                    fromPaths.add(PROJECT_ARTIFACT_DIR + "/" + path);
+                    toPaths.add(PATCH_OUT_DIR + "/" + "程序" + CLASSES_DIR + "/" + path);
                 }
 
-
+            for (int i = 0; i < fromPaths.size(); i++) {
+                String fromPath = fromPaths.get(i);
+                String toPath = toPaths.get(i);
+                writeFile(fromPath, toPath);
+            }
         }
     }
 
