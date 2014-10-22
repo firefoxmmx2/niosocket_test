@@ -28,7 +28,7 @@ public class PatchMaker {
     /**
      * 补丁输出文件夹
      */
-    public static final String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统接口部分";
+    public static final String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统v1.5-v1.7.2";
     /**
      * 改动补丁文件夹列表(可以直接使用idea格式)
      */
@@ -78,7 +78,7 @@ public class PatchMaker {
                 } else if (filepath.contains("WebRoot/")) {
                     String path = filepath.substring(filepath.indexOf("WebRoot/") + "WebRoot/".length());
                     fromPaths.add(PROJECT_ARTIFACT_DIR + "/" + path);
-                    toPaths.add(PATCH_OUT_DIR + "/" + "程序" + CLASSES_DIR + "/" + path);
+                    toPaths.add(PATCH_OUT_DIR + "/" + "程序" + "/" + path);
                 }
 
             for (int i = 0; i < fromPaths.size(); i++) {
