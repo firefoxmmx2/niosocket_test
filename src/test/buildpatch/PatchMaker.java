@@ -13,10 +13,12 @@ import java.util.List;
  */
 public class PatchMaker {
     public static final boolean isDebug = true;
+
+    public static final String PROJECT_ROOT="/home/hooxin/Work/加油站散装油系统";
     /**
      * 部署在服务器上面的地址
      */
-    public static final String PROJECT_ARTIFACT_DIR = "/home/hooxin/Work/加油站散装油系统/out/artifacts/_war_exploded";
+    public static final String PROJECT_ARTIFACT_DIR = PROJECT_ROOT+"/out/artifacts/_war_exploded";
     /**
      * class文件夹名称
      */
@@ -28,12 +30,23 @@ public class PatchMaker {
     /**
      * 补丁输出文件夹
      */
-    public static final String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统v1.5-v1.7.2";
+    public static final String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统v1.7.3_test";
     /**
      * 改动补丁文件夹列表(可以直接使用idea格式)
      */
     public static final String INPUT_FILE = "/home/hooxin/加油站散装油文件更新列表.txt";
-
+    /**
+     * 源码目录
+     */
+    public static final String SOURCE_DIR="src";
+    /**
+     * 数据库脚本目录
+     */
+    public static final String DATABASE_SCRIPT_DIR="数据库脚本";
+    /**
+     * 网页根目录
+     */
+    public static final String WEB_ROOT="WebRoot";
     /**
      * 打包补丁
      */
@@ -50,8 +63,8 @@ public class PatchMaker {
             List<String> toPaths = new ArrayList<String>();
             File file = new File(filepath);
             if (file.getName().contains("."))
-                if (filepath.contains("src/")) {
-                    String path = filepath.substring(filepath.indexOf("src/") + "src/".length())
+                if (filepath.contains(SOURCE_DIR+"/")) {        //源码
+                    String path = filepath.substring(filepath.indexOf(SOURCE_DIR+"/") + (SOURCE_DIR+"/").length())
                             .replaceAll("\\.java", ".class");
                     fromPaths.add(PROJECT_ARTIFACT_CLASSES_DIR + "/" + path);
                     toPaths.add(PATCH_OUT_DIR + "/" + "程序" + CLASSES_DIR + "/" + path);
@@ -75,10 +88,15 @@ public class PatchMaker {
                             }
                     }
 
-                } else if (filepath.contains("WebRoot/")) {
-                    String path = filepath.substring(filepath.indexOf("WebRoot/") + "WebRoot/".length());
+                } else if (filepath.contains(WEB_ROOT+"/")) { //WEB根目录
+                    String path = filepath.substring(filepath.indexOf(WEB_ROOT+"/") + (WEB_ROOT+"/").length());
                     fromPaths.add(PROJECT_ARTIFACT_DIR + "/" + path);
                     toPaths.add(PATCH_OUT_DIR + "/" + "程序" + "/" + path);
+                } else if (filepath.contains(DATABASE_SCRIPT_DIR+"/")) {   //数据库脚本
+                    String path=filepath.substring(filepath.indexOf(DATABASE_SCRIPT_DIR+"/")
+                            +(DATABASE_SCRIPT_DIR+"/").length());
+                    fromPaths.add(PROJECT_ROOT+"/"+DATABASE_SCRIPT_DIR+"/"+path);
+                    toPaths.add(PATCH_OUT_DIR+"/"+DATABASE_SCRIPT_DIR+"/"+path);
                 }
 
             for (int i = 0; i < fromPaths.size(); i++) {
