@@ -12,49 +12,51 @@ import java.util.List;
  * 一个简单的临时的补丁打包工具
  */
 public class PatchMaker {
-    public static final boolean isDebug = true;
+    private boolean isDebug = true;
 
-    public static final String PROJECT_ROOT = "/home/hooxin/Work/加油站散装油系统";
+    private String PROJECT_ROOT = "/home/hooxin/Work/加油站散装油系统";
     /**
      * 部署在服务器上面的地址
      */
-    public static final String PROJECT_ARTIFACT_DIR = PROJECT_ROOT + "/out/artifacts/_war_exploded";
+    private String PROJECT_ARTIFACT_DIR = PROJECT_ROOT + "/out/artifacts/_war_exploded";
     /**
      * class文件夹名称
      */
-    public static final String CLASSES_DIR = "/WEB-INF/classes";
+    private String CLASSES_DIR = "/WEB-INF/classes";
     /**
      * class文件夹的真实路径
      */
-    public static final String PROJECT_ARTIFACT_CLASSES_DIR = PROJECT_ARTIFACT_DIR + CLASSES_DIR;
+    private String PROJECT_ARTIFACT_CLASSES_DIR = PROJECT_ARTIFACT_DIR + CLASSES_DIR;
     /**
      * 补丁输出文件夹
      */
-    public static final String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统v1.6-v1.8";
+    private String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统v1.6-v1.8";
     /**
      * 改动补丁文件夹列表(可以直接使用idea格式)
      */
-    public static final String INPUT_FILE = "/home/hooxin/加油站散装油文件更新列表.txt";
+    private String INPUT_FILE = "/home/hooxin/加油站散装油文件更新列表.txt";
     /**
      * 源码目录
      */
-    public static final String SOURCE_DIR = "源码";
+    private String SOURCE_DIR = "源码";
     /**
      * java源码目录
      */
-    public static final String JAVA_SOURCE_DIR = "src";
+    private String JAVA_SOURCE_DIR = "src";
     /**
      * 数据库脚本目录
      */
-    public static final String DATABASE_SCRIPT_DIR = "数据库脚本";
+    private String DATABASE_SCRIPT_DIR = "数据库脚本";
     /**
      * 网页根目录
      */
-    public static final String WEB_ROOT = "WebRoot";
+    private String WEB_ROOT = "WebRoot";
 
-    public static final List<String> EXCLUDE_WORDS=new ArrayList<String>();
+    private List<String> EXCLUDE_WORDS=new ArrayList<String>();
 
-    static {
+    //初始化
+    public PatchMaker(){
+        //默认添加补丁为排除关键字
         EXCLUDE_WORDS.add("补丁");
     }
     /**
