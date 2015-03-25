@@ -10,14 +10,14 @@ import java.util.List;
  */
 public class MottClientTest {
     private final static String CONNECTION_URL = "tcp://localhost:1883";
-    private final static boolean CLEAN_STRING = true;
+    private final static boolean CLEAN_STRING = false;
     private final static short KEEP_ALIVE = 30;
-    private final static String CLIENT_ID = "client1";
+    private final static String CLIENT_ID = "client";
     private final static String[] TOPICS = {
-            "Test/Test Topics/Topic1",
-            "Test/Test Topics/Topic2",
-            "Test/Test Topics/Topic3",
-            "tokudu/client1"
+            "topic_bjxx_aaaa4",
+            "topic_bjxx_YTJ201",
+            "topic_bjxx_YTJ200",
+            "topic_bjxx_YTJ123456987"
     };
     private final static int[] QOS_VALUES = {0, 0, 2, 0};
 
@@ -31,7 +31,7 @@ public class MottClientTest {
             mqttClient.registerSimpleHandler(simpleCallbackHandler);
             mqttClient.connect(CLIENT_ID + i, CLEAN_STRING, KEEP_ALIVE);
             mqttClient.subscribe(TOPICS, QOS_VALUES);
-//            mqttClient.publish(PUBLISH_TOPICS, "keepalive".getBytes(), QOS_VALUES[0], true);
+            mqttClient.publish(PUBLISH_TOPICS, "keepalive".getBytes(), QOS_VALUES[0], true);
         } catch (MqttException e) {
             e.printStackTrace();
         }
@@ -64,22 +64,12 @@ public class MottClientTest {
 
     public static void main(String[] args) {
         List<MottClientTest> clients=new ArrayList<MottClientTest>();
-        for (int i = 0; i < 1000; i++) {
-            clients.add(new MottClientTest(String.valueOf(i)));
-        }
+//        for (int i = 0; i < 1000; i++) {
+//            clients.add(new MottClientTest(String.valueOf(i)));
+//        }
 
-        MqttAdminClientTest adminClient=new MqttAdminClientTest();
-        adminClient.publish("大家好");
-        adminClient.publish("我是楼主");
-        adminClient.publish("测试一下这个东西到底有没有毛病");
-        adminClient.publish("看来还不错,不知道能不能自动关闭连接");
-        adminClient.publish("添加了close函数，看看可不可以断开连接");
-        adminClient.close();
-        adminClient.publish("这是在断开后发送的，还能看到吗?");
+        new MottClientTest("1");
 
-        for (MottClientTest client : clients) {
-            client.close();
-        }
     }
 }
 
