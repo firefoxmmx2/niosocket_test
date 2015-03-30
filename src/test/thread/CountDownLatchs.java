@@ -34,7 +34,7 @@ public class CountDownLatchs {
             try {
                 startSignal.await();//等待开始执行的信号的发布
                 beginIndex=(beginIndex-1)*10+1;
-                for (int i=beginIndex;i<=beginIndex+10;i++)
+                for (int i=beginIndex;i<beginIndex+10;i++)
                     System.out.println(i);
             } catch (InterruptedException e) {
                 e.printStackTrace();
