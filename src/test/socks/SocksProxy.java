@@ -199,16 +199,16 @@ class SockSServerThread extends Thread {
             }
 
 //            关闭流
-            if (in1 != null)
-                in1.close();
-            if (out1 != null)
-                out1.close();
-            if (client != null && !client.isClosed())
-                client.close();
-            if (in != null)
-                in.close();
-            if (out != null)
-                out.close();
+//            if (in1 != null)
+//                in1.close();
+//            if (out1 != null)
+//                out1.close();
+//            if (client != null && !client.isClosed())
+//                client.close();
+//            if (in != null)
+//                in.close();
+//            if (out != null)
+//                out.close();
             if (connection != null)
                 connection.close();
         } catch (IOException e) {
