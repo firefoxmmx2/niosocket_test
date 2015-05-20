@@ -68,7 +68,7 @@ class HttpProxyServer extends Thread {
             method=1;
             s2="HTTP/1.1 200 Connection established\r\n";
             s2=s2+"Proxy-agent: proxy\r\n\r\n";
-            buf2=s2.getBytes();
+            buf1=s2.getBytes();
             out.write(buf);
             out.flush();
 

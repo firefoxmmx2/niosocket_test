@@ -1,8 +1,6 @@
 package test.socks;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -14,6 +12,14 @@ public class SocksProxy {
         ServerSocket serverSocket = new ServerSocket(9898);
         System.out.println("socks 代理开始监听于" + serverSocket.getLocalPort());
         SocksDaemon socksProxy = new SocksDaemon(serverSocket);
+
+//
+//        ServerSocket server  = new ServerSocket(9898);
+//        while(true){
+//            Socket socket = server.accept();
+//            ActionSocket ap = new ActionSocket(socket);
+//            ap.start();
+//        }
     }
 }
 
@@ -106,6 +112,7 @@ class SockSServerThread extends Thread {
                             } else {
                                 s = new String(buf);
                                 s = s.substring(5);
+                                System.out.println(new String(s));
                                 int index = s.indexOf("\0");
                                 s = s.substring(0, index);
                                 port = buf[5 + index] * 256 + buf[5 + index + 1];
@@ -145,70 +152,70 @@ class SockSServerThread extends Thread {
                             }
                         }
                     }
-                    if (buf[0] == 4) { //判断请求是不是为sock4
-                        port = buf[2] * 256 + buf[3]; //读取端口号
-                        if (buf[4] == 0 & buf[5] == 0 && buf[6] == 0 && buf[7] != 0
-                                && buf[8] == 0) {
-//                            如果请求为域名的话
-                            s = new String(buf);
-                            s = s.substring(9);
-                            s = s.substring(0, s.indexOf("\0"));
-                        } else {
-//                        如果请求为ip
-                            ip = bytes2int(buf[4]) + "." + bytes2int(buf[5]) + "." + bytes2int(buf[6]) + "." + bytes2int(buf[7]);
-                            s = ip;
-                        }
-
-                        for (i = 1; i <= 9; i++)
-                            buf[i - 1] = 0;
-                        client = new Socket(s, port);
-//                    根据sock4 请求中的地址建立tcp套接字 也就是转发的套接字
-                        in1 = new DataInputStream(client.getInputStream());
-                        out1 = new DataOutputStream(client.getOutputStream());
-
-//                    返回sock4应答
-                        ip1 = client.getLocalAddress().getAddress();
-                        port1 = client.getLocalPort();
-                        buf[0] = 0;
-                        buf[1] = 0x5a;
-                        buf[2] = ip1[0];
-                        buf[3] = ip1[1];
-                        buf[4] = (byte) (port1 >> 8);    //把之前转化为int的byte数据转化回byte,在写入输出流
-                        buf[5] = (byte) (port1 & 0xff);
-                        out.write(buf, 0, 8);
-                        out.flush();
-
-                        // SOCKSServerThread1
-                        SOCKSServerThread1 thread1 = new SOCKSServerThread1(in1, out,client);
-                        while (true) {
-                            if (readbytes1 == -1)
-                                break;
-                            try {
-                                readbytes1 = in.read(buf1, 0, BUFF_LEN);
-                                if (readbytes1 > 0) {
-                                    out1.write(buf1, 0, readbytes1);
-                                    out1.flush();
-                                }
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                break;
-                            }
-                        }
-                    }
+//                    if (buf[0] == 4) { //判断请求是不是为sock4
+//                        port = buf[2] * 256 + buf[3]; //读取端口号
+//                        if (buf[4] == 0 & buf[5] == 0 && buf[6] == 0 && buf[7] != 0
+//                                && buf[8] == 0) {
+////                            如果请求为域名的话
+//                            s = new String(buf);
+//                            s = s.substring(9);
+//                            s = s.substring(0, s.indexOf("\0"));
+//                        } else {
+////                        如果请求为ip
+//                            ip = bytes2int(buf[4]) + "." + bytes2int(buf[5]) + "." + bytes2int(buf[6]) + "." + bytes2int(buf[7]);
+//                            s = ip;
+//                        }
+//
+//                        for (i = 1; i <= 9; i++)
+//                            buf[i - 1] = 0;
+//                        client = new Socket(s, port);
+////                    根据sock4 请求中的地址建立tcp套接字 也就是转发的套接字
+//                        in1 = new DataInputStream(client.getInputStream());
+//                        out1 = new DataOutputStream(client.getOutputStream());
+//
+////                    返回sock4应答
+//                        ip1 = client.getLocalAddress().getAddress();
+//                        port1 = client.getLocalPort();
+//                        buf[0] = 0;
+//                        buf[1] = 0x5a;
+//                        buf[2] = ip1[0];
+//                        buf[3] = ip1[1];
+//                        buf[4] = (byte) (port1 >> 8);    //把之前转化为int的byte数据转化回byte,在写入输出流
+//                        buf[5] = (byte) (port1 & 0xff);
+//                        out.write(buf, 0, 8);
+//                        out.flush();
+//
+//                        // SOCKSServerThread1
+//                        SOCKSServerThread1 thread1 = new SOCKSServerThread1(in1, out,client);
+//                        while (true) {
+//                            if (readbytes1 == -1)
+//                                break;
+//                            try {
+//                                readbytes1 = in.read(buf1, 0, BUFF_LEN);
+//                                if (readbytes1 > 0) {
+//                                    out1.write(buf1, 0, readbytes1);
+//                                    out1.flush();
+//                                }
+//                            } catch (IOException e) {
+//                                e.printStackTrace();
+//                                break;
+//                            }
+//                        }
+//                    }
                 }
             }
 
 //            关闭流
-//            if (in1 != null)
-//                in1.close();
-//            if (out1 != null)
-//                out1.close();
-//            if (client != null && !client.isClosed())
-//                client.close();
-//            if (in != null)
-//                in.close();
-//            if (out != null)
-//                out.close();
+            if (in1 != null)
+                in1.close();
+            if (out1 != null)
+                out1.close();
+            if (client != null && !client.isClosed())
+                client.close();
+            if (in != null)
+                in.close();
+            if (out != null)
+                out.close();
             if (connection != null)
                 connection.close();
         } catch (IOException e) {
@@ -251,18 +258,29 @@ class SOCKSServerThread1 extends Thread {
                 break;
             }
         }
-//        //关闭流
-//        try {
-//            if (in != null )
-//                in.close();
-//            if (out != null)
-//                out.close();
-//            if(client != null ){
-//                client.close();
-//            }
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
     }
 }
 
+class ActionSocket extends Thread{
+    private Socket socket = null ;
+    public ActionSocket(Socket s){
+        this.socket = s ;
+    }
+    public void run(){
+        try{
+            this.action() ;
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+    public void action() throws Exception {
+        if (this.socket == null){
+            return ;
+        }
+        BufferedReader br = new BufferedReader(new InputStreamReader(this.socket.getInputStream()));
+        for(String temp = br.readLine() ; temp!=null;temp = br.readLine() ){
+            System.out.println(new String(temp.getBytes(),"utf8"));
+        }
+        br.close();
+    }
+}
