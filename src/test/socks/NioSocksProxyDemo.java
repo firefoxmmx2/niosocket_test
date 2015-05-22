@@ -1,17 +1,13 @@
 package test.socks;
 
-import javax.security.auth.Subject;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
 import java.nio.channels.*;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
 import java.util.Iterator;
-import java.util.stream.StreamSupport;
 
 public class NioSocksProxyDemo {
   public static void main(String[] args) {
@@ -30,7 +26,7 @@ class NSocks5Server {
 
   private enum Step {
     RECEIVE(new byte[]{0x05, 0x01, 0x00, 0x00}),
-    SEND(new byte[]{0x05, 0x00, 0x00, 0x00}),
+    SEND(new byte[]{0x05, 0x00}),
     BIND(new byte[]{0x05, 0x01, 0x00, 0x01}),
     CONNECTED(new byte[]{0x05,0x00,0x00,0x03});
 
@@ -97,40 +93,42 @@ class NSocks5Server {
           SocketChannel channel = serverChannel.accept();
           channel.configureBlocking(false);
           channel.register(serverSelector, SelectionKey.OP_READ);
-          SockStatus sockStatus=new SockStatus();
-          key.attach(sockStatus);
+          SocksMessage socksMessage =new SocksMessage();
+          key.attach(socksMessage);
         } catch (IOException e) {
           e.printStackTrace();
         }
       } else if (key.isReadable()) {
         SocketChannel channel = (SocketChannel) key.channel();
-        SockStatus sockStatus = (SockStatus) key.attachment();
+        SocksMessage socksMessage = (SocksMessage) key.attachment();
 
         try {
-          if (sockStatus == null)
-            sockStatus = new SockStatus();
+          if (socksMessage == null)
+            socksMessage = new SocksMessage();
           int readcount = 0;
           if((readcount = channel.read(buffer)) > 0) {
             buffer.flip();
-            if (!sockStatus.isConnected()) {
+            if (!socksMessage.isConnected()) {
               System.out.println("read  isconnected is false");
-              if (sockStatus.getStatus() == null) {
-                System.out.println("read Step Receive");
-                byte[] bytes = new byte[4];
-                buffer.get(bytes, 0, readcount);
-                if (ByteArrayEquals(Step.RECEIVE.getValue(), bytes)) {
-                  channel.register(serverSelector, SelectionKey.OP_WRITE);
-                  sockStatus.setStatus(Step.RECEIVE);
-                  key.attach(sockStatus);
-                }
-              }
-              else if (sockStatus.getStatus() == Step.SEND) {
-                System.out.println("read Step Send");
+              if (socksMessage.getStatus() == Step.RECEIVE) {
+                System.out.println("读取SOCKS 请求信息");
+                int ver=buffer.get();
+                int authTypeMethodLength=buffer.get();
+                byte[] authTypeIntValueBytes=new byte[authTypeMethodLength];
+                buffer.get(authTypeIntValueBytes);
+                Socks.AuthType authType= Socks.AuthType.valueOf(authTypeIntValueBytes[0]);
+                socksMessage.setVer(Socks.Vers.valueOf(ver));
+                socksMessage.setAuthType(authType);
                 channel.register(serverSelector, SelectionKey.OP_WRITE);
-                sockStatus.setData(buffer.array());
-                key.attach(sockStatus);
+                key.attach(socksMessage);
               }
-              else if (sockStatus.getStatus() == Step.BIND) {
+              else if (socksMessage.getStatus() == Step.SEND) {
+                System.out.println("读取SOCKS验证请求");
+                channel.register(serverSelector, SelectionKey.OP_WRITE);
+                socksMessage.setData(buffer.array());
+                key.attach(socksMessage);
+              }
+              else if (socksMessage.getStatus() == Step.BIND) {
                 System.out.println("read Step Bind");
                 channel.register(serverSelector,SelectionKey.OP_WRITE);
 
@@ -150,27 +148,46 @@ class NSocks5Server {
         }
       } else if (key.isWritable()) {
         SocketChannel channel = (SocketChannel) key.channel();
-        SockStatus sockStatus=null;
+        SocksMessage socksMessage =null;
         Object attach=key.attachment();
-        if(attach!= null && attach instanceof SockStatus)
-          sockStatus= (SockStatus) attach;
-        if(sockStatus!=null){
+        if(attach!= null && attach instanceof SocksMessage)
+          socksMessage = (SocksMessage) attach;
+        if(socksMessage !=null){
 
-          if (!sockStatus.isConnected()) {
-            if (sockStatus.getStatus() == Step.RECEIVE) {
+          if (!socksMessage.isConnected()) {
+            if (socksMessage.getStatus() == Step.RECEIVE) {
               try {
-                System.out.println("write receive===");
-                channel.write(ByteBuffer.wrap(Step.SEND.getValue()));
+                System.out.println("响应 SOCKS 验证回复");
+                ByteBuffer responseBuf=ByteBuffer.allocate(2);
+                responseBuf.put(socksMessage.getVer().getValue().byteValue());
+                if(socksMessage.getAuthType() == Socks.AuthType.NONE
+                    || socksMessage.getAuthType() == Socks.AuthType.NO_ACCEPTABLE) {
+                  System.out.println("未使用验证");
+                  responseBuf.put(new Integer(0x00).byteValue());
+                }
+                else if(socksMessage.getAuthType() == Socks.AuthType.USER_PWD){
+                  // TODO 用户验证
+                  System.out.println("用户验证");
+                }
+                else if (socksMessage.getAuthType() == Socks.AuthType.GSSAPI) {
+                  // TODO 通用安全服务应用程序接口 验证
+                  System.out.println("通用安全服务应用程序接口验证");
+                }
+                else if (socksMessage.getAuthType() == Socks.AuthType.IANA) {
+                  // TODO IANA 分配认证
+                  System.out.println("IANA 分配认证");
+                }
+
+                channel.write(responseBuf);
                 channel.register(serverSelector, SelectionKey.OP_READ);
-                sockStatus=new SockStatus();
-                sockStatus.setStatus(Step.SEND);
-                key.attach(sockStatus);
+                socksMessage.setStatus(Step.SEND);
+                key.attach(socksMessage);
               } catch (IOException e) {
                 e.printStackTrace();
               }
-            } else if (sockStatus.getStatus() == Step.SEND) {
+            } else if (socksMessage.getStatus() == Step.SEND) {
               System.out.println("write send===");
-              byte[] buf = sockStatus.getData();
+              byte[] buf = socksMessage.getData();
               String ip = "";
               int port = 0;
               buffer.clear();
@@ -193,22 +210,13 @@ class NSocks5Server {
                 buffer.put(buf);
                 channel.write(buffer);
                 channel.register(serverSelector, SelectionKey.OP_READ);
-                sockStatus = new SockStatus(false,Step.BIND);
-                key.attach(sockStatus);
+                socksMessage.setData(null);
+                socksMessage.setStatus(Step.BIND);
+                key.attach(socksMessage);
               } catch (IOException e) {
                 e.printStackTrace();
               }
             }
-//            else if (sockStatus.getStatus() == Step.BIND) {
-//              try {
-//                channel.register(serverSelector,SelectionKey.OP_READ);
-//                sockStatus=new SockStatus(false,Step.CONNECTED);
-//                key.attach(sockStatus);
-//              } catch (ClosedChannelException e) {
-//                e.printStackTrace();
-//              }
-//
-//            }
           }
         }
       }
@@ -252,10 +260,37 @@ class NSocks5Server {
     }
   }
 
-  class SockStatus {
+  class SocksMessage {
     private boolean isConnected;
-    private Step status;
+    private Step status=Step.RECEIVE;
     private byte[] data;
+    private Socks.Vers ver;
+    private Socks.AddressType addressType;
+    private Socks.AuthType authType;
+
+    public Socks.AuthType getAuthType() {
+      return authType;
+    }
+
+    public void setAuthType(Socks.AuthType authType) {
+      this.authType = authType;
+    }
+
+    public Socks.Vers getVer() {
+      return ver;
+    }
+
+    public void setVer(Socks.Vers ver) {
+      this.ver = ver;
+    }
+
+    public Socks.AddressType getAddressType() {
+      return addressType;
+    }
+
+    public void setAddressType(Socks.AddressType addressType) {
+      this.addressType = addressType;
+    }
 
     public byte[] getData() {
       return data;
@@ -265,16 +300,16 @@ class NSocks5Server {
       this.data = data;
     }
 
-    public SockStatus() {
+    public SocksMessage() {
       isConnected = false;
     }
 
-    public SockStatus(boolean isConnected, Step status) {
+    public SocksMessage(boolean isConnected, Step status) {
       this.isConnected = isConnected;
       this.status = status;
     }
 
-    public SockStatus(boolean isConnected, Step status, byte[] data) {
+    public SocksMessage(boolean isConnected, Step status, byte[] data) {
       this.isConnected = isConnected;
       this.status = status;
       this.data = data;
@@ -320,5 +355,103 @@ class Sock5Protocol {
 }
 
 class Socks {
+  /**
+   * 版本
+   */
+  public enum Vers {
+    V5(0x05),
+    V4a(0x04);
+
+    private Integer value;
+
+    Vers(Integer i) {
+      value=i;
+    }
+
+    public Integer getValue() {
+      return value;
+    }
+
+    public static Vers valueOf(int verIntValue) {
+      Vers ver = null;
+      switch (verIntValue) {
+        case 0x05:
+          ver= V5;
+          break;
+        case 0x04:
+          ver= V4a;
+          break;
+        default:
+          ver = null;
+          break;
+      }
+      return ver;
+    }
+  };
+
+  /**
+   * 地址类型
+   */
+  public enum AddressType {
+    IPV4(1),
+    IPV6(4),
+    DOMAIN(3);
+
+    private int value;
+    AddressType(int i) {
+      value = i;
+    }
+
+    public int getValue() {
+      return value;
+    }
+  }
+
+  public enum AuthType {
+    /**
+     * 0x00 无验证
+     */
+    NONE,
+    /**
+     * 0x01 通用安全服务应用程序接口(GSSAPI)
+     */
+    GSSAPI,
+    /**
+     * 0x02 用户名/密码
+     */
+    USER_PWD,
+    /**
+     * 0x03 ~ 0x7f IANA 分配认证
+     */
+    IANA,
+    /**
+     * 0x80 ~ 0xfe 私人方法保留
+     */
+    RESERVERD,
+    /**
+     * 0xff 不可接受方法
+     */
+    NO_ACCEPTABLE;
+
+    public static AuthType valueOf(int authTypeIntValue){
+      if(authTypeIntValue == 0x00)
+        return NONE;
+      else if (authTypeIntValue == 0x01) {
+          return GSSAPI;
+      }
+      else if (authTypeIntValue == 0x02) {
+        return USER_PWD;
+      }
+      else if (authTypeIntValue >= 0x03 && authTypeIntValue <= 0x7f) {
+          return IANA;
+      }
+      else if (authTypeIntValue >= 0x80 && authTypeIntValue <= 0xfe) {
+          return RESERVERD;
+      }
+      else {
+        return NO_ACCEPTABLE;
+      }
+    }
+  }
 
 }
