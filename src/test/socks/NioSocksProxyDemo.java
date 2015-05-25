@@ -1,5 +1,7 @@
 package test.socks;
 
+import jdk.internal.org.objectweb.asm.tree.analysis.Value;
+
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -37,7 +39,7 @@ class NSocks4aServer {
 
     public void newRemoteData(Selector selector, SelectionKey sk) throws IOException {
       ByteBuffer buf = ByteBuffer.allocate(1024);
-      if(remote.read(buf) == -1)
+      if (remote.read(buf) == -1)
         throw new IOException("disconnected");
       lastData = System.currentTimeMillis();
       buf.flip();
@@ -45,9 +47,9 @@ class NSocks4aServer {
     }
 
     public void newClientData(Selector selector, SelectionKey sk) throws IOException {
-      if(!connected) {
+      if (!connected) {
         ByteBuffer inbuf = ByteBuffer.allocate(512);
-        if(client.read(inbuf)<1)
+        if (client.read(inbuf) < 1)
           return;
         inbuf.flip();
 
@@ -74,7 +76,7 @@ class NSocks4aServer {
         while ((inbuf.get()) != 0) ; // username
 
         // hostname provided, not IP
-        System.out.println("[debug] ip[0-3] = "+ip[0]+ip[1]+ip[2]+ip[3]);
+        System.out.println("[debug] ip[0-3] = " + ip[0] + ip[1] + ip[2] + ip[3]);
         if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] != 0) { // host provided
           String host = "";
           byte b;
@@ -88,14 +90,14 @@ class NSocks4aServer {
         remote = SocketChannel.open(new InetSocketAddress(remoteAddr, port));
 
         ByteBuffer out = ByteBuffer.allocate(20);
-        out.put((byte)0);
+        out.put((byte) 0);
         out.put((byte) (remote.isConnected() ? 0x5a : 0x5b));
         out.putShort((short) port);
         out.put(remoteAddr.getAddress());
         out.flip();
         client.write(out);
 
-        if(!remote.isConnected())
+        if (!remote.isConnected())
           throw new IOException("connect failed");
 
         remote.configureBlocking(false);
@@ -104,7 +106,7 @@ class NSocks4aServer {
         connected = true;
       } else {
         ByteBuffer buf = ByteBuffer.allocate(1024);
-        if(client.read(buf) == -1)
+        if (client.read(buf) == -1)
           throw new IOException("disconnected");
         lastData = System.currentTimeMillis();
         buf.flip();
@@ -137,7 +139,7 @@ class NSocks4aServer {
 
     int lastClients = clients.size();
     // select loop
-    while(true) {
+    while (true) {
       select.select(1000);
 
       Set keys = select.selectedKeys();
@@ -181,20 +183,21 @@ class NSocks4aServer {
       // client timeout check
       for (int i = 0; i < clients.size(); i++) {
         SocksClient cl = clients.get(i);
-        if((System.currentTimeMillis() - cl.lastData) > 30000L) {
+        if ((System.currentTimeMillis() - cl.lastData) > 30000L) {
           cl.client.close();
-          if(cl.remote != null)
+          if (cl.remote != null)
             cl.remote.close();
           clients.remove(cl);
         }
       }
-      if(clients.size() != lastClients) {
+      if (clients.size() != lastClients) {
         System.out.println(clients.size());
         lastClients = clients.size();
       }
     }
   }
 }
+
 class NSocks5Server {
   private Selector serverSelector;
   private ServerSocketChannel serverSocketChannel;
@@ -309,17 +312,14 @@ class NSocks5Server {
                 Socks.AuthType authType = Socks.AuthType.valueOf(authTypeIntValueBytes[0]);
                 socksMessage.setVer(Socks.Vers.valueOf(ver));
                 socksMessage.setAuthType(authType);
-                if (channel.isConnected())
-                  channel.register(serverSelector, SelectionKey.OP_WRITE, socksMessage);
-              } else if (socksMessage.getStatus() == Step.SEND) {
-                System.out.println("读取SOCKS验证请求");
+                channel.register(serverSelector, SelectionKey.OP_WRITE, socksMessage);
+              }
+            } else {
+//              验证结束后,正常的转发数据
+              if (socksMessage.getStatus() == Step.SEND) {
+                System.out.println("读取SOCKS响应地址信息");
                 socksMessage.setData(buffer.array());
-                if (channel.isConnected())
-                  channel.register(serverSelector, SelectionKey.OP_WRITE, socksMessage);
-              } else if (socksMessage.getStatus() == Step.BIND) {
-                System.out.println("读取SOCKS绑定请求");
-                if (channel.isConnected())
-                  channel.register(serverSelector, SelectionKey.OP_WRITE, socksMessage);
+                channel.register(serverSelector, SelectionKey.OP_WRITE, socksMessage);
               }
             }
             buffer.clear();
@@ -365,6 +365,7 @@ class NSocks5Server {
 
                 buffer.flip();
                 channel.write(buffer);
+                socksMessage.setIsConnected(true);
                 socksMessage.setStatus(Step.SEND);
 //                System.out.println("[debug]socksMessage.getStatus() = " + socksMessage.getStatus());
                 if (channel.isConnected())
@@ -372,14 +373,44 @@ class NSocks5Server {
               } catch (IOException e) {
                 e.printStackTrace();
               }
-            } else if (socksMessage.getStatus() == Step.SEND) {
+            }
+          } else {
+            if (socksMessage.getStatus() == Step.SEND) {
               System.out.println("响应SOCKS发送步骤回复");
               byte[] buf = socksMessage.getData();
               String ip = "";
               int port = 0;
               buffer.clear();
-              buffer.put(Step.BIND.getValue());
-              if ((buf[0] == Step.BIND.getValue()[0] && buf[1] == Step.BIND.getValue()[1] && buf[2] == Step.BIND.getValue()[2] && buf[3] == Step.BIND.getValue()[3])) {
+              //sock5
+              if (buf[0] == socksMessage.getVer().getValue().byteValue()) {
+                int ver = buf[0];
+                int cmd = buf[1];
+                int rsv = buf[2];
+
+                if (Socks.CMDType.CONNECT.getValue() == cmd) {
+                  //TCP连接方式
+                } else if (Socks.CMDType.BIND.getValue() == cmd) {
+                  // todo 以后实现bind方式
+                  throw new RuntimeException("不支持该种方式");
+                } else if (Socks.CMDType.UDP.getValue() == cmd) {
+                  // todo 以后实现UDP方式
+                  throw new RuntimeException("不支持该种方式");
+                }
+
+                int addressTypeInt = buf[3];
+                socksMessage.setAddressType(Socks.AddressType.valueOf(addressTypeInt));
+                if(socksMessage.addressType == Socks.AddressType.IPV4) {
+                  // TODO 处理IPV4的地址和端口
+                }
+                else if (socksMessage.addressType == Socks.AddressType.IPV6){
+                  // todo 处理IPV6 的地址和端口
+                }
+                else if(socksMessage.addressType == Socks.AddressType.DOMAIN) {
+                  // todo 处理域名类型的地址 和端口
+                }
+              }
+              // todo sock4a
+              if ((buf[0] == socksMessage.getVer().getValue().byteValue() && buf[1] == Step.BIND.getValue()[1] && buf[2] == Step.BIND.getValue()[2] && buf[3] == Step.BIND.getValue()[3])) {
                 ip = (bytes2int(buf[4])) + "." + (bytes2int(buf[5])) + "." + (bytes2int(buf[6])) + "." + (bytes2int(buf[7]));
                 port = buf[8] * 256 + buf[9];
               } else {
@@ -389,14 +420,13 @@ class NSocks5Server {
                 port = buf[endIdx] * 256 + buf[endIdx + 1];
               }
               try {
+                buffer.put(socksMessage.getVer().getValue().byteValue());
                 buffer.put(ip.getBytes());
-                buffer.put((byte)port);
+                buffer.put((byte) port);
                 buffer.flip();
                 channel.write(buffer);
                 buffer.clear();
-//                buffer.put(buf);
-//                buffer.flip();
-//                channel.write(buffer);
+                socksMessage.setIsConnected(true);
                 socksMessage.setData(null);
                 socksMessage.setStatus(Step.BIND);
                 channel.register(serverSelector, SelectionKey.OP_READ, socksMessage);
@@ -596,6 +626,22 @@ class Socks {
     public int getValue() {
       return value;
     }
+
+    public static AddressType valueOf(int i) {
+      AddressType result = null;
+      switch (i) {
+        case 1:
+          result = IPV4;
+          break;
+        case 4:
+          result = IPV6;
+          break;
+        case 3:
+          result = DOMAIN;
+          break;
+      }
+      return result;
+    }
   }
 
   public enum AuthType {
@@ -641,4 +687,20 @@ class Socks {
     }
   }
 
+  public enum CMDType {
+    CONNECT(1),
+    BIND(2),
+    UDP(3);
+
+    private int value;
+
+    CMDType(int i) {
+      value = i;
+    }
+
+    public int getValue() {
+      return value;
+    }
+
+  }
 }
