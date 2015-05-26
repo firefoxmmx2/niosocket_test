@@ -1,10 +1,9 @@
 package test.socks;
 
-import jdk.internal.org.objectweb.asm.tree.analysis.Value;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -321,6 +320,11 @@ class NSocks5Server {
                 socksMessage.setData(buffer.array());
                 channel.register(serverSelector, SelectionKey.OP_WRITE, socksMessage);
               }
+              else if(socksMessage.getStatus() == Step.BIND){
+                System.out.println("读取来自代理客户端数据");
+                socksMessage.setData(buffer.array());
+                channel.register(serverSelector,SelectionKey.OP_WRITE,socksMessage);
+              }
             }
             buffer.clear();
           } else {
@@ -378,60 +382,114 @@ class NSocks5Server {
             if (socksMessage.getStatus() == Step.SEND) {
               System.out.println("响应SOCKS发送步骤回复");
               byte[] buf = socksMessage.getData();
+              ByteBuffer bb = ByteBuffer.wrap(buf);
               String ip = "";
-              int port = 0;
+              int responseCode = Socks.ResponseType.SUCCESS.getValue();
               buffer.clear();
               //sock5
-              if (buf[0] == socksMessage.getVer().getValue().byteValue()) {
-                int ver = buf[0];
-                int cmd = buf[1];
-                int rsv = buf[2];
+              int ver = bb.get();
+              int rsv=0;
+              if (ver == socksMessage.getVer().getValue().byteValue()) {
+                int cmd = bb.get();
+                rsv = bb.get();
 
                 if (Socks.CMDType.CONNECT.getValue() == cmd) {
                   //TCP连接方式
+                  responseCode= Socks.ResponseType.SUCCESS.getValue();
                 } else if (Socks.CMDType.BIND.getValue() == cmd) {
                   // todo 以后实现bind方式
+                  responseCode= Socks.ResponseType.CMD_NOT_SUPPORT.getValue();
                   throw new RuntimeException("不支持该种方式");
                 } else if (Socks.CMDType.UDP.getValue() == cmd) {
                   // todo 以后实现UDP方式
+                  responseCode= Socks.ResponseType.CMD_NOT_SUPPORT.getValue();
                   throw new RuntimeException("不支持该种方式");
                 }
 
-                int addressTypeInt = buf[3];
+                int addressTypeInt = bb.get();
                 socksMessage.setAddressType(Socks.AddressType.valueOf(addressTypeInt));
-                if(socksMessage.addressType == Socks.AddressType.IPV4) {
-                  // TODO 处理IPV4的地址和端口
+
+                try {
+                  if (socksMessage.addressType == Socks.AddressType.IPV4) {
+                    //处理IPV4的地址
+                    byte[] ipbytes = new byte[4];
+                    bb.get(ipbytes);
+                    InetAddress address = null;
+                    address = InetAddress.getByAddress(ipbytes);
+                    socksMessage.setAddress(address);
+
+                  } else if (socksMessage.addressType == Socks.AddressType.IPV6) {
+                    //处理IPV6 的地址
+                    byte[] ipbytes = new byte[6];
+                    InetAddress address = null;
+                    address = InetAddress.getByAddress(ipbytes);
+                    socksMessage.setAddress(address);
+                  } else if (socksMessage.addressType == Socks.AddressType.DOMAIN) {
+                    // 处理域名类型的地址
+                    int hostLength = bb.get();
+                    byte[] hostbytes = new byte[hostLength];
+                    bb.get(hostbytes);
+                    InetAddress address = null;
+                    address = InetAddress.getByName(new String(hostbytes));
+                    socksMessage.setAddress(address);
+                  }
+                  else{
+                    responseCode= Socks.ResponseType.ADDRTYPE_NOT_SUPPORT.getValue();
+                    throw new RuntimeException("不支持的地址类型");
+                  }
+                } catch (UnknownHostException e) {
+                  throw new RuntimeException(e);
                 }
-                else if (socksMessage.addressType == Socks.AddressType.IPV6){
-                  // todo 处理IPV6 的地址和端口
-                }
-                else if(socksMessage.addressType == Socks.AddressType.DOMAIN) {
-                  // todo 处理域名类型的地址 和端口
-                }
+
+                // 端口
+                byte[] portbytes = new byte[2];
+                bb.get(portbytes);
+                socksMessage.setPortBytes(portbytes);
+                int port = portbytes[0] * 256 + portbytes[1];
+                socksMessage.setPort(port);
               }
               // todo sock4a
-              if ((buf[0] == socksMessage.getVer().getValue().byteValue() && buf[1] == Step.BIND.getValue()[1] && buf[2] == Step.BIND.getValue()[2] && buf[3] == Step.BIND.getValue()[3])) {
-                ip = (bytes2int(buf[4])) + "." + (bytes2int(buf[5])) + "." + (bytes2int(buf[6])) + "." + (bytes2int(buf[7]));
-                port = buf[8] * 256 + buf[9];
-              } else {
-                ip = new String(buf);
-                int endIdx = ip.indexOf("\0", 5);
-                ip = ip.substring(5, endIdx);
-                port = buf[endIdx] * 256 + buf[endIdx + 1];
-              }
+
               try {
                 buffer.put(socksMessage.getVer().getValue().byteValue());
-                buffer.put(ip.getBytes());
-                buffer.put((byte) port);
+                buffer.put(socksMessage.getAddress().getAddress());
+                buffer.put(socksMessage.getPortBytes());
                 buffer.flip();
                 channel.write(buffer);
                 buffer.clear();
-                socksMessage.setIsConnected(true);
+                //建立和客户端连接的通道
+                NioSocks5Client client=new NioSocks5Client(channel,socksMessage.getAddress(),socksMessage.getPort());
+                socksMessage.setClient(client);
+                int localPort=client.getLocalPort();
+                //发送完毕响应
+                buffer.put(socksMessage.getVer().getValue().byteValue());
+                buffer.put((byte) responseCode);
+                buffer.put((byte) rsv);
+                buffer.put((byte) 0x01);
+                //返回服务器自身 地址和端口
+                buffer.put(InetAddress.getLocalHost().getAddress());
+                buffer.putInt(localPort);
+                buffer.flip();
+                channel.write(buffer);
                 socksMessage.setData(null);
                 socksMessage.setStatus(Step.BIND);
                 channel.register(serverSelector, SelectionKey.OP_READ, socksMessage);
               } catch (IOException e) {
                 e.printStackTrace();
+              }
+            }
+            else if (socksMessage.getStatus() == Step.BIND) {
+              // todo 把服务器的信息转发到客户端
+              ByteBuffer bb = ByteBuffer.wrap(socksMessage.getData());
+              if (socksMessage.client != null) {
+                NioSocks5Client client = socksMessage.getClient();
+                bb.flip();
+                try {
+                  client.write(bb);
+                } catch (IOException e) {
+                  e.printStackTrace();
+                  throw new RuntimeException(e);
+                }
               }
             }
           }
@@ -448,33 +506,100 @@ class NSocks5Server {
       res |= temp;
       return res;
     }
-
-    private boolean ByteArrayEquals(byte[] a, byte[] b) {
-      if (a.length == b.length) {
-        boolean result = true;
-        for (int i = 0; i < a.length; i++) {
-          if (a[i] != b[i]) {
-            result = false;
-            break;
-          }
-
-        }
-        return result;
-      }
-      return false;
-    }
   }
 
   class NioSocks5Client implements Runnable {
-    final SocketChannel client;
+    private SocketChannel clientChannel;
+    private SocketChannel serverChannel;
+    private Selector selector;
+    private ByteBuffer buffer;
+    private int BUFFER_LENGTH=8*1024;
 
-    public NioSocks5Client(SocketChannel client) {
-      this.client = client;
+    public NioSocks5Client(SocketChannel serverChannel,InetAddress address,int port) throws IOException {
+      this.serverChannel = serverChannel;
+      clientChannel = SocketChannel.open();
+      clientChannel.configureBlocking(false);
+      clientChannel.connect(new InetSocketAddress(address, port));
+      selector = Selector.open();
+      clientChannel.register(selector, SelectionKey.OP_CONNECT);
+      buffer=ByteBuffer.allocate(BUFFER_LENGTH);
+      run();
     }
 
+    public int getLocalPort() throws IOException {
+      return ((InetSocketAddress) clientChannel.getLocalAddress()).getPort();
+    }
+    public InetAddress getLocalAddress() throws IOException {
+      return ((InetSocketAddress) clientChannel.getLocalAddress()).getAddress();
+    }
+
+    public int write(ByteBuffer buffer) throws IOException {
+      return clientChannel.write(buffer);
+    }
     @Override
     public void run() {
+      try {
+        while(true){
+          selector.select(200);
+          Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
+          while(iterator.hasNext()){
+            SelectionKey key=iterator.next();
+            iterator.remove();
+            handle(key);
+          }
+        }
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      } finally {
+        try {
+          selector.close();
+          clientChannel.close();
+        } catch (IOException e) {
+          e.printStackTrace();
+          throw new RuntimeException(e);
+        }
+      }
+    }
 
+    private void handle(SelectionKey key) throws IOException {
+      if(key.isConnectable()){
+        SocketChannel channel= (SocketChannel) key.channel();
+        if(channel.isConnectionPending())
+          channel.finishConnect();
+        channel.register(selector,SelectionKey.OP_READ);
+      }
+      else if(key.isReadable()){
+        // todo 读取来自服务器的内容
+        SocketChannel channel= (SocketChannel) key.channel();
+        int readCount=channel.read(buffer);
+        serverChannel.write(ByteBuffer.allocateDirect((byte)0));
+        if(readCount>0) {
+          buffer.flip();
+          serverChannel.write(buffer);
+          buffer.clear();
+          channel.register(selector,SelectionKey.OP_WRITE);
+        }
+        else{
+          key.cancel();
+          channel.close();
+        }
+
+      }
+      else if (key.isWritable()){
+        // todo 发送数据到服务器
+        SocketChannel channel= (SocketChannel) key.channel();
+        int readCount=serverChannel.read(buffer);
+        if(readCount>0){
+          buffer.flip();
+          channel.write(buffer);
+          buffer.clear();
+          channel.register(selector,SelectionKey.OP_READ);
+        }
+        else{
+          key.cancel();
+          channel.close();
+        }
+      }
     }
   }
 
@@ -485,6 +610,48 @@ class NSocks5Server {
     private Socks.Vers ver;
     private Socks.AddressType addressType;
     private Socks.AuthType authType;
+    private InetAddress address;
+    private int port;
+    private byte[] portBytes;
+    private NioSocks5Client client;
+
+    public NioSocks5Client getClient() {
+      return client;
+    }
+
+    public void setClient(NioSocks5Client client) {
+      this.client = client;
+    }
+
+    public InetAddress getAddress() {
+      return address;
+    }
+
+    public void setAddress(InetAddress address) {
+      this.address = address;
+    }
+
+    public int getPort() {
+      return port;
+    }
+
+    public byte[] getPortBytes() {
+      if(port!=0){
+        portBytes=new byte[2];
+        portBytes[0]= (byte) (port>>8);
+        portBytes[1]= (byte) (port - port>>8);
+      }
+
+      return portBytes;
+    }
+
+    public void setPortBytes(byte[] portBytes) {
+      this.portBytes = portBytes;
+    }
+
+    public void setPort(int port) {
+      this.port = port;
+    }
 
     public Socks.AuthType getAuthType() {
       return authType;
@@ -702,5 +869,27 @@ class Socks {
       return value;
     }
 
+  }
+
+  public enum ResponseType {
+    SUCCESS(0X00),
+    SOCKS_GENERAL_FAILD(0x01),
+    CONNECT_NOT_ALLOW(0X02),
+    NETWORK_UNREACHABLE(0x03),
+    HOST_UNREACHABLE(0X04),
+    CONNECT_REFUSE(0X05),
+    TTL_EXPIRE(0X06),
+    CMD_NOT_SUPPORT(0X07),
+    ADDRTYPE_NOT_SUPPORT(0X08);
+
+    private int value;
+
+    ResponseType(int i) {
+      value = i;
+    }
+
+    public int getValue() {
+      return value;
+    }
   }
 }
