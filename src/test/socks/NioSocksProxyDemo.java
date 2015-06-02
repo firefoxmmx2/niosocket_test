@@ -1,7 +1,9 @@
 package test.socks;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Iterator;
@@ -125,7 +127,9 @@ class NioSock5ServerHandler {
       try {
         SocketChannel channel=serverChannel.accept();
         channel.configureBlocking(false);
-        channel.register(selector, SelectionKey.OP_READ);
+        SocksMessage msg=new SocksMessage();
+        msg.setCurrentStep(Socks.Steps.HAND_SHAKE);
+        channel.register(selector, SelectionKey.OP_READ,msg);
       } catch (IOException e) {
         e.printStackTrace();
         throw new RuntimeException(e);
@@ -155,14 +159,21 @@ class NioSock5ServerHandler {
           channel.close();
         }
         Object attachment=key.attachment();
-        if(attachment==null){
-          SocksHandShake handShake= SockHandShakeBuilder.createSockHandShake(buffer, selector, key);
-          handShake.readSocksVersion();
-        }
-        else {
-          if(attachment instanceof SocksBind){
-            SocksBind bind=SocksBindBuilder.create(buffer,selector,key);
-            bind.receiveProxyTargetAddressInfomation();
+        if(attachment!=null) {
+          if(attachment instanceof SocksMessage){
+            SocksMessage msg= (SocksMessage) attachment;
+            System.out.println("当前代理步骤位于"+msg.getCurrentStep());
+            if(Socks.Steps.HAND_SHAKE == msg.getCurrentStep()){
+              SocksHandShake handShake= SockHandShakeBuilder.create(buffer, selector, key, msg);
+              handShake.readSocksVersion();
+            }
+            else if(Socks.Steps.BIND == msg.getCurrentStep()){
+              SocksBind bind=SocksBindBuilder.create(buffer,selector,key,msg);
+              bind.receiveProxyTargetAddressInfomation();
+            }
+            else if (Socks.Steps.TRANSFER == msg.getCurrentStep()){
+              // todo 传输转发
+            }
           }
         }
 
@@ -179,7 +190,7 @@ class NioSock5ServerHandler {
   class WriteServerHandler implements Runnable {
     private Selector selector;
     private SelectionKey key;
-
+    private ByteBuffer buffer;
     public WriteServerHandler(Selector selector, SelectionKey key) {
       this.selector = selector;
       this.key = key;
@@ -190,15 +201,19 @@ class NioSock5ServerHandler {
       System.out.println("在进程"+Thread.currentThread().getId()+"的写入状态");
       SocketChannel channel= (SocketChannel) key.channel();
       Object attachment = key.attachment();
-      if(attachment != null) {
-        if(attachment instanceof SocksHandShake){
-          SocksHandShake handShake = (SocksHandShake) attachment;
+      if(attachment != null && attachment instanceof SocksMessage) {
+        SocksMessage msg= (SocksMessage) attachment;
+        if(Socks.Steps.HAND_SHAKE ==  msg.getCurrentStep()){
+          SocksHandShake handShake = SockHandShakeBuilder.create(buffer,selector,key,msg);
           handShake.sendReady();
         }
-        else if (attachment instanceof SocksBind){
-          SocksBind bind = (SocksBind) attachment;
+        else if (Socks.Steps.BIND == msg.getCurrentStep()){
+          SocksBind bind=SocksBindBuilder.create(buffer,selector,key,msg);
           bind.sendLocalAddressInfomation();
           bind.sendReady();
+        }
+        else if (Socks.Steps.TRANSFER == msg.getCurrentStep()){
+          // todo 传输转发
         }
       }
     }
@@ -212,52 +227,124 @@ interface SocksHandShake {
 }
 
 interface SocksBind {
-  void receiveProxyTargetAddressInfomation();
+  void receiveProxyTargetAddressInfomation() throws UnknownHostException;
   void sendLocalAddressInfomation();
   void sendReady();
 }
 
-interface SocksMessage {
+interface SocksSocketData {
   void readServerDataToWriteProxyTagget();
   void readProxyTargetDataToWriteServer();
+}
+
+class SocksMessage {
+  private Socks.Version ver;
+  private Socks.AuthType authType;
+  private Socks.AddressType addressType;
+  private Socks.Steps currentStep;
+  private byte[] data;
+  private InetAddress proxyTargetAddress;
+  private int proxyTargetPort;
+
+  public InetAddress getProxyTargetAddress() {
+    return proxyTargetAddress;
+  }
+
+  public void setProxyTargetAddress(InetAddress proxyTargetAddress) {
+    this.proxyTargetAddress = proxyTargetAddress;
+  }
+
+  public int getProxyTargetPort() {
+    return proxyTargetPort;
+  }
+
+  public void setProxyTargetPort(int proxyTargetPort) {
+    this.proxyTargetPort = proxyTargetPort;
+  }
+
+  public byte[] getData() {
+    return data;
+  }
+
+  public void setData(byte[] data) {
+    this.data = data;
+  }
+
+  public Socks.Steps getCurrentStep() {
+    return currentStep;
+  }
+
+  public void setCurrentStep(Socks.Steps currentStep) {
+    this.currentStep = currentStep;
+  }
+
+  public Socks.Version getVer() {
+    return ver;
+  }
+
+  public void setVer(Socks.Version ver) {
+    this.ver = ver;
+  }
+
+  public Socks.AuthType getAuthType() {
+    return authType;
+  }
+
+  public void setAuthType(Socks.AuthType authType) {
+    this.authType = authType;
+  }
+
+  public Socks.AddressType getAddressType() {
+    return addressType;
+  }
+
+  public void setAddressType(Socks.AddressType addressType) {
+    this.addressType = addressType;
+  }
+
 }
 
 class Socks5HandShake implements SocksHandShake {
   private ByteBuffer buffer;
   private Selector serverSelector;
   private SelectionKey key;
-
-  public Socks5HandShake(ByteBuffer buffer, Selector serverSelector, SelectionKey key) {
+  private SocksMessage msg;
+  public Socks5HandShake(ByteBuffer buffer, Selector serverSelector, SelectionKey key,SocksMessage msg) {
     this.buffer = buffer;
     this.serverSelector = serverSelector;
     this.key = key;
+    this.msg = msg;
   }
 
   @Override
   public void readSocksVersion() {
-    int ver = buffer.get(1);
-    int methodNum = buffer.get(1);
+    int ver = buffer.get();
+    int methodNum = buffer.get();
     int authTypeInt = buffer.get(methodNum);
 
-
+    msg.setAuthType(Socks.AuthType.valueOf(authTypeInt));
+    msg.setVer(Socks.Version.V5);
   }
 
   @Override
   public void sendReady() {
+    buffer.put((byte)5);
+    buffer.put((byte)0);
+    buffer.flip();
 
   }
 }
 class SockHandShakeBuilder {
-  public static SocksHandShake createSockHandShake(ByteBuffer buffer,Selector selector,SelectionKey key){
+  public static SocksHandShake create(ByteBuffer buffer, Selector selector, SelectionKey key, SocksMessage msg){
     if(buffer == null)
       throw new RuntimeException("缓冲区为空");
     if(buffer.hasRemaining()){
       throw new RuntimeException("缓冲区里面没有可用的数据");
     }
-    int ver = buffer.get(1);
+    int ver = buffer.get();
     if(ver == Socks.Version.V5.getValue()){
       buffer.rewind();
-      return new Socks5HandShake(buffer,selector,key);
+      return new Socks5HandShake(buffer,selector,key,msg);
     }
     else if(ver == Socks.Version.V4A.getValue()){
       return null;
@@ -271,15 +358,62 @@ class Socks5Bind implements SocksBind {
   private ByteBuffer buffer;
   private Selector serverSelector;
   private SelectionKey key;
+  private SocksMessage msg;
 
-  public Socks5Bind(ByteBuffer buffer, Selector serverSelector, SelectionKey key) {
+  public Socks5Bind(ByteBuffer buffer, Selector serverSelector, SelectionKey key,SocksMessage msg) {
     this.buffer = buffer;
     this.serverSelector = serverSelector;
     this.key = key;
+    this.msg = msg;
   }
 
   @Override
-  public void receiveProxyTargetAddressInfomation() {
+  public void receiveProxyTargetAddressInfomation() throws UnknownHostException {
+    SocketChannel channel= (SocketChannel) key.channel();
+    buffer.flip();
+    byte[] sockinfos=new byte[3];
+    buffer.get(sockinfos);
+    int ver = sockinfos[0];
+    int cmd = sockinfos[1];
+    if(!(Socks.CMDType.CONNECT.getValue() == cmd)) {
+      throw new RuntimeException("不支持该种端口处理方式 CMD :"+cmd);
+    }
+    int rsv = sockinfos[2];
+
+    int addrTypeValue = buffer.get();
+    Socks.AddressType addressType = Socks.AddressType.valueOf(addrTypeValue);
+    if(addressType == Socks.AddressType.IPV4){
+      byte[] ipBytes=new byte[4];
+      buffer.get(ipBytes);
+      byte[] portBytes=new byte[2];
+      buffer.get(portBytes);
+      int port = portBytes[0] & 0xff << 8 + portBytes[1] & 0xff ;
+      msg.setProxyTargetAddress(InetAddress.getByAddress(ipBytes));
+      msg.setProxyTargetPort(port);
+    }
+    else if (addressType == Socks.AddressType.IPV6){
+      byte[] ipBytes=new byte[6];
+      buffer.get(ipBytes);
+      byte[] portBytes=new byte[2];
+      buffer.get(portBytes);
+      int port = portBytes[0] & 0xff << 8 + portBytes[1] & 0xff ;
+      msg.setProxyTargetAddress(InetAddress.getByAddress(ipBytes));
+      msg.setProxyTargetPort(port);
+    }
+    else if (addressType == Socks.AddressType.DOMAIN) {
+      int hostLength = buffer.get();
+      byte[] hostBytes=new byte[hostLength];
+      buffer.get(hostBytes);
+      byte[] portBytes=new byte[2];
+      buffer.get(portBytes);
+      String hostname = new String(hostBytes);
+      int port = portBytes[0] & 0xff << 8 + portBytes[1] & 0xff ;
+      msg.setProxyTargetAddress(InetAddress.getByName(hostname));
+      msg.setProxyTargetPort(port);
+    }
+    else {
+      throw new RuntimeException("不支持这种地址类型");
+    }
 
   }
 
@@ -295,17 +429,17 @@ class Socks5Bind implements SocksBind {
 }
 
 class SocksBindBuilder {
-  public static SocksBind create(ByteBuffer buffer,Selector selector,SelectionKey key){
+  public static SocksBind create(ByteBuffer buffer,Selector selector,SelectionKey key,SocksMessage msg){
     if(buffer == null)
       throw new RuntimeException("缓冲区为空");
     if(buffer.hasRemaining()){
       throw new RuntimeException("缓冲区里面没有可用的数据");
     }
 
-    int ver = buffer.get(1);
+    int ver = buffer.get();
     if(ver == Socks.Version.V5.getValue()) {
       buffer.rewind();
-      return new Socks5Bind(buffer,selector,key);
+      return new Socks5Bind(buffer,selector,key,msg);
     }
     else if (ver == Socks.Version.V4A.getValue()){
       buffer.rewind();
@@ -452,5 +586,11 @@ class Socks {
     public int getValue() {
       return value;
     }
+  }
+
+  public enum Steps {
+    HAND_SHAKE, // 握手
+    BIND,   // 绑定
+    TRANSFER; // 传输
   }
 }
