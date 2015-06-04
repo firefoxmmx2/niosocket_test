@@ -2,6 +2,9 @@ package test.interview;
 
 import java.lang.reflect.Array;
 
+/**
+ * 连接两个数组
+ */
 public class ConcatArray {
   public static void main(String[] args) {
     NArray<Integer> na1 = new NArray<Integer>(new Integer[]{1,2,3,4});
