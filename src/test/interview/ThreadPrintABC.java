@@ -1,5 +1,10 @@
 package test.interview;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+
 public class ThreadPrintABC {
   public void sleepMethod() throws InterruptedException {
     final int limit = 10;
@@ -54,84 +59,152 @@ public class ThreadPrintABC {
     Thread.sleep(10);
   }
 
-  public void synchronizedMethod() throws InterruptedException {
-    final Object object=new Object();
+  public void synchronizedWaitNotifyMethod() throws InterruptedException {
+    class Controller {
+      private String currentWord;
+
+      public void nextWord() {
+        if("A".equals(currentWord)){
+          currentWord="B";
+        }
+        else if("B".equals(currentWord)){
+          currentWord="C";
+        }
+        else if("C".equals(currentWord)) {
+          currentWord="A";
+        }
+        else {
+          currentWord="A";
+        }
+      }
+
+      public String getCurrentWord() {
+        return currentWord;
+      }
+    }
+
     final int limit=10;
-    class A extends Thread {
-      @Override
-      public void run() {
-        for (int i = 0; i < limit; i++) {
-          synchronized (object){
-            System.out.print("A");
-            if(i<limit-1) {
-              try {
-                object.wait();
-              } catch (InterruptedException e) {
-                e.printStackTrace();
-              }
-            }
-          }
-        }
-      }
+    ExecutorService executorService = Executors.newFixedThreadPool(3);
+    final Controller controller=new Controller();
 
-      public A() {
-        this.start();
-      }
-    }
+    class PrintABC implements Runnable {
+      private final String word;
 
-    class B extends Thread {
-
-      @Override
-      public void run() {
-        for (int i = 0; i < limit; i++) {
-          synchronized (object) {
-            System.out.print("B");
-            if(i<limit-1) {
-              try {
-                object.wait();
-              } catch (InterruptedException e) {
-                e.printStackTrace();
-              }
-            }
-          }
-        }
-      }
-
-      public B() {
-        this.start();
-      }
-    }
-
-    class C extends Thread {
-      public C() {
-        this.start();
+      public PrintABC(String word) {
+        this.word = word;
       }
 
       @Override
       public void run() {
         for (int i = 0; i < limit; i++) {
-          synchronized (object){
-            object.notifyAll();
-            System.out.println("C");
-            if(i<limit-1) {
+          synchronized (controller){
+            while(!controller.getCurrentWord().equals(word))  {
               try {
-                object.wait();
+                controller.wait();
               } catch (InterruptedException e) {
                 e.printStackTrace();
               }
             }
+            if("C".equals(word)) {
+              System.out.println(word);
+            }
+            else {
+              System.out.print(word);
+            }
+            controller.notifyAll();
+            controller.nextWord();
           }
+
         }
       }
     }
-    A a = new A();
-    B b = new B();
-    C c = new C();
+
+    controller.nextWord();
+    executorService.execute(new PrintABC("A"));
+    executorService.execute(new PrintABC("B"));
+    executorService.execute(new PrintABC("C"));
+
+    executorService.shutdown();
+
+  }
+
+  public void reentrantLockConditionMethod() {
+    final int limit=10;
+    ExecutorService executorService=Executors.newFixedThreadPool(3);
+    ReentrantLock lock=new ReentrantLock();
+    final Condition condition=lock.newCondition();
+
+    class Controller {
+      private String word="A";
+
+      public void nextWord() {
+        if("A".equals(word)){
+          word="B";
+        }
+        else if("B".equals(word)){
+          word="C";
+        }
+        else if("C".equals(word)) {
+          word="A";
+        }
+      }
+
+      public String getWord() {
+        return word;
+      }
+
+      public void printABC() {
+        System.out.print(word);
+        if("C".equals(word))
+          System.out.println();
+      }
+    }
+    class PrintABC implements Runnable {
+      private String word;
+      private ReentrantLock lock;
+      private Controller controller;
+      private Condition condition;
+
+      public PrintABC(String word, ReentrantLock lock, Controller controller, Condition condition) {
+        this.word = word;
+        this.lock = lock;
+        this.controller = controller;
+        this.condition = condition;
+      }
+
+      @Override
+      public void run() {
+        for (int i = 0; i < limit; i++) {
+          lock.lock();
+          try {
+            while(!word.equals(controller.getWord())){
+              try {
+                condition.await();
+              } catch (InterruptedException e) {
+                e.printStackTrace();
+              }
+            }
+            controller.printABC();
+            controller.nextWord();
+            condition.signalAll();
+          } finally {
+            lock.unlock();
+          }
+
+        }
+      }
+    }
+    Controller controller=new Controller();
+    executorService.execute(new PrintABC("A",lock,controller,condition));
+    executorService.execute(new PrintABC("B",lock,controller,condition));
+    executorService.execute(new PrintABC("C",lock,controller,condition));
+    executorService.shutdown();
   }
   public static void main(String[] args) throws InterruptedException {
     ThreadPrintABC abc = new ThreadPrintABC();
 //    abc.sleepMethod();
 //    Thread.sleep(1000);
-    abc.synchronizedMethod();
+//    abc.synchronizedWaitNotifyMethod();
+    abc.reentrantLockConditionMethod();
   }
 }
