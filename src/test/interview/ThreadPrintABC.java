@@ -200,6 +200,11 @@ public class ThreadPrintABC {
     executorService.execute(new PrintABC("C",lock,controller,condition));
     executorService.shutdown();
   }
+
+  public void atomicMethod() {
+    final int limit=10;
+
+  }
   public static void main(String[] args) throws InterruptedException {
     ThreadPrintABC abc = new ThreadPrintABC();
 //    abc.sleepMethod();

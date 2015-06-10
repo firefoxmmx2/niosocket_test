@@ -30,7 +30,7 @@ public class PatchMaker {
     /**
      * 补丁输出文件夹
      */
-    private String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/加油站散装油系统v2.3.2-v2.3.3";
+    private String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/内保单位综合系统v1.9.3-v2.3.4";
     /**
      * 改动补丁文件夹列表(可以直接使用idea格式)
      */
