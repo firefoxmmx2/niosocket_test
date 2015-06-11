@@ -128,7 +128,7 @@ public class ImportDataFromXml {
 
   public void build() throws SQLException {
     connection = DriverManager.getConnection(dbUrl,dbUsername,dbPassword);
-
+    connection.setAutoCommit(false);
     try {
       File scanDir = new File(dirname);
       FileFilter fileFilter = new FileFilter() {
@@ -173,7 +173,7 @@ public class ImportDataFromXml {
 
   }
 
-  public void importData(Document document){
+  public void importData(Document document) throws SQLException {
 
     try {
       //插入数据
@@ -182,7 +182,9 @@ public class ImportDataFromXml {
       delete(document);
       //更新数据
       update(document);
+      connection.commit();
     } catch (Exception e) {
+      connection.rollback();
       e.printStackTrace();
     }
   }
