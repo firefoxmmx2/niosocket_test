@@ -30,7 +30,7 @@ public class PatchMaker {
     /**
      * 补丁输出文件夹
      */
-    private String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/内保单位综合系统v1.9.3-v2.3.4";
+    private String PATCH_OUT_DIR = "/home/hooxin/Work/加油站散装油系统/补丁/内保单位综合系统v2.3.3-v2.3.5";
     /**
      * 改动补丁文件夹列表(可以直接使用idea格式)
      */
@@ -131,7 +131,11 @@ public class PatchMaker {
             File patchFilePath = new File(toPath);
             if (!patchFilePath.getParentFile().exists())
                 patchFilePath.getParentFile().mkdirs();
-            FileInputStream in = new FileInputStream(fromPath);
+            File fromFile = new File(fromPath);
+            if(!fromFile.exists()){
+                return;
+            }
+            FileInputStream in = new FileInputStream(fromFile);
             FileOutputStream out = new FileOutputStream(patchFilePath);
             FileChannel inChannel = in.getChannel();
             FileChannel outChannel = out.getChannel();
