@@ -67,7 +67,7 @@ public class PatchMaker {
         config.put("PROJECT_ARTIFACT_DIR",config.get("PROJECT_ROOT")+"/out/artifacts/_war_exploded");
         config.put("CLASSES_DIR","/WEB-INF/classes");
         config.put("PROJECT_ARTIFACT_CLASSES_DIR",config.get("PROJECT_ARTIFACT_DIR")+config.get("CLASSES_DIR"));
-        config.put("PATCH_OUT_DIR","/home/hooxin/Work/加油站散装油系统/补丁/内保单位综合系统v2.4.2-v2.4.3");
+        config.put("PATCH_OUT_DIR","/home/hooxin/Work/加油站散装油系统/补丁/内保单位综合系统v3.1-v3.3");
         config.put("INPUT_FILE","/home/hooxin/加油站散装油文件更新列表.txt");
         config.put("SOURCE_DIR","源码");
         config.put("JAVA_SOURCE_DIR","src");
@@ -82,13 +82,27 @@ public class PatchMaker {
         config.put("PROJECT_ARTIFACT_DIR",config.get("PROJECT_ROOT")+"/out/artifacts/hnscpt_war_exploded");
         config.put("CLASSES_DIR","/WEB-INF/classes");
         config.put("PROJECT_ARTIFACT_CLASSES_DIR",config.get("PROJECT_ARTIFACT_DIR")+config.get("CLASSES_DIR"));
-        config.put("PATCH_OUT_DIR","/home/hooxin/Work/海南社采平台/补丁/海南社采平台v1.0-v1.1补丁");
+        config.put("PATCH_OUT_DIR","/home/hooxin/Work/海南社采平台/补丁/海南社采平台v1.7-v1.8补丁");
         config.put("INPUT_FILE","/home/hooxin/海南社采更新列表.txt");
         config.put("SOURCE_DIR","hnscpt");
         config.put("JAVA_SOURCE_DIR","src");
         config.put("DATABASE_SCRIPT_DIR","数据库脚本");
         config.put("WEB_ROOT","WebRoot");
         configMap.put("hnscpt",config);
+
+        //广西内保企业接口
+        config=new HashMap<>();
+        config.put("PROJECT_ROOT","/home/hooxin/Work/加油站散装油系统企业接口");
+        config.put("PROJECT_ARTIFACT_DIR",config.get("PROJECT_ROOT")+"/out/artifacts/_Web_exploded");
+        config.put("CLASSES_DIR","/WEB-INF/classes");
+        config.put("PROJECT_ARTIFACT_CLASSES_DIR",config.get("PROJECT_ARTIFACT_DIR")+config.get("CLASSES_DIR"));
+        config.put("PATCH_OUT_DIR","/home/hooxin/Work/加油站散装油系统企业接口/补丁/加油站散装油系统企业接口v1.3-v1.4");
+        config.put("INPUT_FILE","/home/hooxin/加油站散装油系统企业接口更新列表.txt");
+        config.put("SOURCE_DIR","源码");
+        config.put("JAVA_SOURCE_DIR","src");
+        config.put("DATABASE_SCRIPT_DIR","数据库脚本");
+        config.put("WEB_ROOT","WebRoot");
+        configMap.put("gxnbdwzshjk",config);
     }
 
     //初始化
@@ -202,7 +216,7 @@ public class PatchMaker {
     }
 
     public static void main(String[] args) throws IOException {
-        PatchMaker pm = new PatchMaker("hnscpt");
+        PatchMaker pm = new PatchMaker("gxnbdw");
         pm.buildPatch();
     }
 }
