@@ -67,7 +67,7 @@ public class PatchMaker {
         config.put("PROJECT_ARTIFACT_DIR",config.get("PROJECT_ROOT")+"/out/artifacts/_war_exploded");
         config.put("CLASSES_DIR","/WEB-INF/classes");
         config.put("PROJECT_ARTIFACT_CLASSES_DIR",config.get("PROJECT_ARTIFACT_DIR")+config.get("CLASSES_DIR"));
-        config.put("PATCH_OUT_DIR","/home/hooxin/Work/加油站散装油系统/补丁/内保单位综合系统v3.1-v3.3");
+        config.put("PATCH_OUT_DIR","/home/hooxin/Work/加油站散装油系统/补丁/内保单位综合系统v3.5.1-v3.5.2");
         config.put("INPUT_FILE","/home/hooxin/加油站散装油文件更新列表.txt");
         config.put("SOURCE_DIR","源码");
         config.put("JAVA_SOURCE_DIR","src");
@@ -96,7 +96,7 @@ public class PatchMaker {
         config.put("PROJECT_ARTIFACT_DIR",config.get("PROJECT_ROOT")+"/out/artifacts/_Web_exploded");
         config.put("CLASSES_DIR","/WEB-INF/classes");
         config.put("PROJECT_ARTIFACT_CLASSES_DIR",config.get("PROJECT_ARTIFACT_DIR")+config.get("CLASSES_DIR"));
-        config.put("PATCH_OUT_DIR","/home/hooxin/Work/加油站散装油系统企业接口/补丁/加油站散装油系统企业接口v1.3-v1.4");
+        config.put("PATCH_OUT_DIR","/home/hooxin/Work/加油站散装油系统企业接口/补丁/加油站散装油系统企业接口v1.5-v1.6");
         config.put("INPUT_FILE","/home/hooxin/加油站散装油系统企业接口更新列表.txt");
         config.put("SOURCE_DIR","源码");
         config.put("JAVA_SOURCE_DIR","src");
